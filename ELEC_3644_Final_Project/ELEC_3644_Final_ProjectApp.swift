@@ -11,7 +11,7 @@ import SwiftUI
 struct ELEC_3644_Final_ProjectApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainTabContainerView()   // 入口改成我们自定义的容器
         }
     }
 }
