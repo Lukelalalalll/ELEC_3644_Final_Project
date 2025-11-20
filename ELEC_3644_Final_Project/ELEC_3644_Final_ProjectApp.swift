@@ -6,12 +6,20 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct ELEC_3644_Final_ProjectApp: App {
     var body: some Scene {
         WindowGroup {
-            MainTabContainerView()   // 入口改成我们自定义的容器
+            MainTabContainerView()
         }
+        .modelContainer(for: [
+            User.self,
+            Post.self,
+            PostComment.self,
+            Course.self,
+            CourseComment.self
+        ])
     }
 }
