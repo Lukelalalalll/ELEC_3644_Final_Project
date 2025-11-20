@@ -49,8 +49,8 @@ class Course {
     }
     
     // 便捷方法：添加作业
-    func addHomework(homeworkId: String, title: String, description: String, dueDate: Date, priority: Int = 3) {
-        let homework = Homework(homeworkId: homeworkId, title: title, description: description, dueDate: dueDate, priority: priority)
+    func addHomework(homeworkId: String, title: String, dueDate: Date, priority: Int = 3) {
+        let homework = Homework(homeworkId: homeworkId, title: title, dueDate: dueDate)
         homeworkList.append(homework)
     }
     
