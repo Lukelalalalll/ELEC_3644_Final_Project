@@ -80,16 +80,16 @@ struct TabBarButton: View {
                 ZStack {
                     // 液态玻璃选中效果
                     if selectedTab == index {
-                        RoundedRectangle(cornerRadius: 40)
+                        RoundedRectangle(cornerRadius: 30)
                             .fill(.ultraThinMaterial)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 40)
+                                RoundedRectangle(cornerRadius: 30)
                                     .stroke(Color.white.opacity(0.4), lineWidth: 1)
                             )
                             .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                             .matchedGeometryEffect(id: "TAB", in: animation)
                             .frame(width: 70, height: 70)
-                            .offset(y: 0)
+                            .offset(y: 4)
                     }
                     
                     // 图标
