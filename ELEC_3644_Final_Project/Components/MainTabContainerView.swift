@@ -5,7 +5,6 @@
 //  Created by cccakkke on 2025/11/20.
 //
 
-
 import SwiftUI
 
 struct MainTabContainerView: View {
@@ -28,8 +27,8 @@ struct MainTabContainerView: View {
                     TabBarButton(icon: "book.fill", title: "Courses", index: 2, selectedTab: $selectedTab, animation: animation)
                     TabBarButton(icon: "person.circle.fill", title: "Profile", index: 3, selectedTab: $selectedTab, animation: animation)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 18)
+                .padding(.horizontal, 0)
+                .padding(.vertical, 26)
                 .background(
                     VisualEffectBlur(blurStyle: .systemThinMaterial)
                         .overlay(
@@ -44,8 +43,11 @@ struct MainTabContainerView: View {
                         .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 4)
                 )
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                // 移除负的底部间距，使用安全区域
+                .padding(.bottom, 0)
             }
+            // 忽略安全区域，让 TabBar 延伸到屏幕底部
+            .ignoresSafeArea(.container, edges: .bottom)
         }
     }
     
@@ -53,7 +55,7 @@ struct MainTabContainerView: View {
     private var currentPage: some View {
         switch selectedTab {
         case 0: HomeView()
-        case 1: PostsView()
+        case 1: PostsFeedView()
         case 2: CoursesView()
         case 3: ProfileView()
         default: HomeView()
@@ -76,20 +78,26 @@ struct TabBarButton: View {
         }) {
             VStack(spacing: 4) {
                 ZStack {
-                    // 选中时的背景动画 - 调整位置和大小
+                    // 液态玻璃选中效果
                     if selectedTab == index {
-                        Circle()
-                            .fill(Color.accentColor.opacity(0.15))
+                        RoundedRectangle(cornerRadius: 40)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 40)
+                                    .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                             .matchedGeometryEffect(id: "TAB", in: animation)
-                            .frame(width: 67, height: 67)
-                            .offset(y: 10) // 向上微调位置
+                            .frame(width: 70, height: 70)
+                            .offset(y: 0)
                     }
                     
                     // 图标
                     Image(systemName: icon)
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: 24, weight: .medium))
                         .foregroundColor(selectedTab == index ? .accentColor : .primary.opacity(0.7))
-                        .scaleEffect(selectedTab == index ? 1.1 : 1.0)
+                        .scaleEffect(selectedTab == index ? 1.5 : 1.0)
+                        .offset(y: -5)
                 }
                 .frame(height: 24)
                 
@@ -97,8 +105,9 @@ struct TabBarButton: View {
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(selectedTab == index ? .accentColor : .primary.opacity(0.7))
-                    .fixedSize(horizontal: true, vertical: false) // 防止文字截断
+                    .fixedSize(horizontal: true, vertical: false)
                     .scaleEffect(selectedTab == index ? 1.0 : 0.95)
+                    .offset(y: 0)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -106,6 +115,7 @@ struct TabBarButton: View {
         .buttonStyle(ScaleButtonStyle())
     }
 }
+
 
 struct ScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
