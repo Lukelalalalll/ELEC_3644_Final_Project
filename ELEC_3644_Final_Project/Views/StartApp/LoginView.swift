@@ -55,11 +55,11 @@ struct LoginView: View {
                     VStack(spacing: 20) {
                         // 用户名输入
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Username")
+                            Text("Enter your registered email")
                                 .font(.headline)
                                 .foregroundColor(.primary)
                             
-                            TextField("Enter your username", text: $username)
+                            TextField("Enter your email", text: $username)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -120,41 +120,32 @@ struct LoginView: View {
         }
     }
     
+    // 在 LoginView.swift 中修改 login 函数
     private func login() {
         isLoading = true
         showError = false
         
-        // 模拟网络请求延迟
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            // 验证用户
-            let predicate = #Predicate<User> { user in
-                user.username == username && user.password == password
-            }
-            
-            let descriptor = FetchDescriptor<User>(predicate: predicate)
-            
-            // 在登录成功的 else 分支中添加：
-            do {
-                let users = try modelContext.fetch(descriptor)
-                
-                if users.isEmpty {
-                    errorMessage = "Invalid username or password"
-                    showError = true
-                } else {
-                    // 保存登录状态和用户名
+        // 使用 Firebase 登录
+        FirebaseService.shared.loginUser(email: username, password: password) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let user):
+                    // 保存登录状态和用户信息
                     UserDefaults.standard.set(true, forKey: "isLoggedIn")
-                    UserDefaults.standard.set(username, forKey: "currentUsername")
+                    UserDefaults.standard.set(user.username, forKey: "currentUsername")
+                    UserDefaults.standard.set(user.userId, forKey: "currentUserId")
                     
-                    // 登录成功，关闭当前页面并显示主应用
-                    dismiss()
-                    showMainApp = true
+                    // 登录成功
+                    self.dismiss()
+                    self.showMainApp = true
+                    
+                case .failure(let error):
+                    self.errorMessage = error.localizedDescription
+                    self.showError = true
                 }
-            } catch {
-                errorMessage = "Login failed. Please try again."
-                showError = true
+                
+                self.isLoading = false
             }
-            
-            isLoading = false
         }
     }
 }
