@@ -60,10 +60,5 @@ class Course {
         let total = comments.reduce(0) { $0 + Double($1.rating) }
         return total / Double(comments.count)
     }
-    
-    // 便捷方法：获取未完成的作业
-    func pendingHomeworks() -> [Homework] {
-        return homeworkList.filter { !$0.isCompleted }
-    }
 }
 
