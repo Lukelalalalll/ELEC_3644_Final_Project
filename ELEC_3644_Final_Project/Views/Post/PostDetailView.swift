@@ -67,7 +67,7 @@ struct PostDetailView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
-                            .cornerRadius(22)
+                            .cornerRadius(30)
                     }
                     
                     // Stats
@@ -112,7 +112,7 @@ struct PostDetailView: View {
                             .textFieldStyle(.plain)
                             .padding(12)
                             .background(Color(.systemGray6))
-                            .cornerRadius(12)
+                            .cornerRadius(30)
                             .lineLimit(1...4)
                         
                         Button {
@@ -134,7 +134,7 @@ struct PostDetailView: View {
                 
                 // Comments Section
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("评论 (\(post.commentCount))")
+                    Text("Comment (\(post.commentCount))")
                         .font(.headline)
                         .fontWeight(.semibold)
                         .padding(.horizontal, 16)
@@ -289,11 +289,11 @@ struct CommentRow: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 22)
+            RoundedRectangle(cornerRadius: 30)
                 .fill(Color(.systemBackground))
                 .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
-        .alert("删除评论", isPresented: $showingDeleteAlert) {
+        .alert("Delete Comment", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 onDelete()

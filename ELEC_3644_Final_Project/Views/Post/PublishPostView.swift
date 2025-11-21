@@ -21,22 +21,70 @@ struct PublishPostView: View {
     @State private var photosPickerItem: PhotosPickerItem?
     
     var body: some View {
-        NavigationView {
-            Form {
-                Section {
-                    TextField("标题（可选）", text: $title)
-                    TextField("分享你的想法...", text: $content, axis: .vertical)
-                        .lineLimit(3...8)
+        ScrollView {
+            VStack(spacing: 20) {
+                // 标题输入区域
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Title（Optioinal）")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                    
+                    TextField("", text: $title)
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(30)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 30)
+                                .stroke(Color(.systemGray4), lineWidth: 1)
+                        )
                 }
+                .padding(.horizontal, 16)
                 
-                Section {
+                // 内容输入区域
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Content")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 4)
+                    
+                    TextEditor(text: $content)
+                        .frame(minHeight: 120)
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(30)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 30)
+                                .stroke(Color(.systemGray4), lineWidth: 1)
+                        )
+                        .overlay(
+                            Group {
+                                if content.isEmpty {
+                                    Text("Share your life...")
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 20)
+                                        .padding(.vertical, 12)
+                                        .allowsHitTesting(false)
+                                }
+                            },
+                            alignment: .topLeading
+                        )
+                }
+                .padding(.horizontal, 16)
+                
+                // 图片选择区域
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Add photos")
+                        .font(.headline)
+                        .padding(.horizontal, 4)
+                    
                     if let selectedImage = selectedImage {
                         Image(uiImage: selectedImage)
                             .resizable()
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
                             .frame(height: 200)
-                            .cornerRadius(8)
+                            .cornerRadius(30)
                             .overlay(
                                 Button {
                                     self.selectedImage = nil
@@ -55,34 +103,40 @@ struct PublishPostView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "photo")
-                                Text("添加图片")
+                                Text("Add photos")
                             }
                             .foregroundColor(.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(30)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 30)
+                                    .stroke(Color.blue, lineWidth: 1)
+                            )
                         }
                     }
-                } header: {
-                    Text("添加图片")
                 }
-            }
-            .navigationTitle("发布帖子")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("取消") {
-                        dismiss()
-                    }
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("发布") {
-                        publishPost()
-                    }
-                    .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Spacer()
+            }
+            .padding(.vertical, 16)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Publish Post")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Publish") {
+                    publishPost()
                 }
+                .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .sheet(isPresented: $isShowingImagePicker) {
-                ImagePicker(selectedImage: $selectedImage)
-            }
+        }
+        .sheet(isPresented: $isShowingImagePicker) {
+            ImagePicker(selectedImage: $selectedImage)
         }
     }
     
@@ -143,6 +197,8 @@ struct ImagePicker: UIViewControllerRepresentable {
 }
 
 #Preview {
-    PublishPostView()
-        .modelContainer(for: [Post.self, User.self, PostComment.self])
+    NavigationView {
+        PublishPostView()
+    }
+    .modelContainer(for: [Post.self, User.self, PostComment.self])
 }
