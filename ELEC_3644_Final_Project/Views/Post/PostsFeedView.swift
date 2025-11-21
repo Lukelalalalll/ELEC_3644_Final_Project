@@ -6,13 +6,6 @@
 //
 
 
-//
-//  PostsView.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/20.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -39,21 +32,16 @@ struct PostsFeedView: View {
                 .padding(.vertical, 8)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("校园动态")
+            .navigationTitle("Campus Posts")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        showingNewPost = true
-                    } label: {
+                    NavigationLink(destination: PublishPostView()) {
                         Image(systemName: "plus.circle.fill")
                             .font(.title3)
                             .foregroundColor(.blue)
                     }
                 }
-            }
-            .sheet(isPresented: $showingNewPost) {
-                PublishPostView()
             }
             .onAppear {
                 if posts.isEmpty {
@@ -93,7 +81,7 @@ struct PostCell: View {
                     .foregroundColor(.blue)
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(post.author?.username ?? "匿名用户")
+                    Text(post.author?.username ?? "Anonymous User")
                         .font(.headline)
                         .fontWeight(.semibold)
                         .foregroundColor(.primary)
@@ -130,7 +118,7 @@ struct PostCell: View {
                     .frame(height: 200)
                     .frame(maxWidth: .infinity)
                     .clipped()
-                    .cornerRadius(12)
+                    .cornerRadius(30)
             }
             
             // Stats and Actions
@@ -177,12 +165,12 @@ struct PostCell: View {
         }
         .padding(20)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 30)
                 .fill(Color(.systemBackground))
                 .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 30)
                 .stroke(Color(.systemGray5), lineWidth: 0.5)
         )
     }
