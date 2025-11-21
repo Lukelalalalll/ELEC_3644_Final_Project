@@ -13,22 +13,20 @@ class Homework {
     var homeworkId: String
     var title: String
     var dueDate: Date // 截止日期
-    var isCompleted: Bool // 是否完成
     
     // 关系 - 所属的课程
     var course: Course?
     
-    init(homeworkId: String, title: String, dueDate: Date, isCompleted: Bool = false, course: Course? = nil) {
+    init(homeworkId: String, title: String, dueDate: Date, course: Course? = nil) {
         self.homeworkId = homeworkId
         self.title = title
         self.dueDate = dueDate
-        self.isCompleted = isCompleted
         self.course = course
     }
     
     // 便捷方法：检查是否即将到期（3天内）
     func isDueSoon() -> Bool {
         let threeDays: TimeInterval = 3 * 24 * 60 * 60
-        return dueDate.timeIntervalSinceNow <= threeDays && !isCompleted
+        return dueDate.timeIntervalSinceNow <= threeDays
     }
 }
