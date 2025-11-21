@@ -4,15 +4,28 @@
 //
 //  Created by cccakkke on 2025/11/18.
 //
+//
+//  ELEC_3644_Final_ProjectApp.swift
+//  ELEC_3644_Final_Project
+//
+//  Created by cccakkke on 2025/11/18.
+//
 
 import SwiftUI
 import SwiftData
 
+
 @main
 struct ELEC_3644_Final_ProjectApp: App {
+    @AppStorage("isLoggedIn") private var isLoggedIn = false
+    
     var body: some Scene {
         WindowGroup {
-            MainTabContainerView()
+            if isLoggedIn {
+                MainTabContainerView()
+            } else {
+                WelcomeView()
+            }
         }
         .modelContainer(for: [
             User.self,
