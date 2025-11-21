@@ -67,7 +67,7 @@ struct PostDetailView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
-                            .cornerRadius(12)
+                            .cornerRadius(22)
                     }
                     
                     // Stats
@@ -96,7 +96,38 @@ struct PostDetailView: View {
                 }
                 .padding(20)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(Color(.systemBackground))
+                )
+                .padding(.horizontal, 16)
+                
+                // Comment Input Card - 添加卡片效果
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Publish your comment")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                    
+                    HStack(spacing: 12) {
+                        TextField("You can write down your comment here...", text: $commentText, axis: .vertical)
+                            .textFieldStyle(.plain)
+                            .padding(12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                            .lineLimit(1...4)
+                        
+                        Button {
+                            addComment()
+                        } label: {
+                            Image(systemName: "paperplane.circle.fill")
+                                .font(.title2)
+                                .foregroundColor(commentText.isEmpty ? .secondary : .blue)
+                        }
+                        .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 22)
                         .fill(Color(.systemBackground))
                 )
                 .padding(.horizontal, 16)
@@ -113,7 +144,7 @@ struct PostDetailView: View {
                             Image(systemName: "bubble.left")
                                 .font(.system(size: 44))
                                 .foregroundColor(.secondary.opacity(0.5))
-                            Text("暂无评论")
+                            Text("No comments yet")
                                 .font(.body)
                                 .foregroundColor(.secondary)
                             Text("成为第一个评论的人")
@@ -125,37 +156,14 @@ struct PostDetailView: View {
                     } else {
                         LazyVStack(spacing: 12) {
                             ForEach(post.comments) { comment in
-                                CommentRow(comment: comment)
+                                CommentRow(comment: comment, onDelete: {
+                                    deleteComment(comment)
+                                })
                             }
                         }
                         .padding(.horizontal, 16)
                     }
                 }
-                
-                // Comment Input
-                VStack(spacing: 0) {
-                    Divider()
-                    
-                    HStack(spacing: 12) {
-                        TextField("写下你的评论...", text: $commentText, axis: .vertical)
-                            .textFieldStyle(.plain)
-                            .padding(12)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(20)
-                            .lineLimit(1...4)
-                        
-                        Button {
-                            addComment()
-                        } label: {
-                            Image(systemName: "paperplane.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(commentText.isEmpty ? .secondary : .blue)
-                        }
-                        .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    .padding(16)
-                }
-                .background(Color(.systemBackground))
             }
             .padding(.vertical, 8)
         }
@@ -195,12 +203,23 @@ struct PostDetailView: View {
         
         try? modelContext.save()
     }
+    
+    private func deleteComment(_ comment: PostComment) {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            if let index = post.comments.firstIndex(where: { $0.id == comment.id }) {
+                post.comments.remove(at: index)
+                try? modelContext.save()
+            }
+        }
+    }
 }
 
 // MARK: - Comment Row
 struct CommentRow: View {
     let comment: PostComment
+    let onDelete: () -> Void
     @State private var liked = false
+    @State private var showingDeleteAlert = false
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -255,15 +274,33 @@ struct CommentRow: View {
                     .foregroundColor(.secondary)
                     
                     Spacer()
+                    
+                    // 删除按钮
+                    Button(role: .destructive) {
+                        showingDeleteAlert = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: 22)
                 .fill(Color(.systemBackground))
                 .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
+        .alert("删除评论", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        } message: {
+            Text("Are you sure you want to delete this comment? This action cannot be undone.")
+        }
     }
 }
 
