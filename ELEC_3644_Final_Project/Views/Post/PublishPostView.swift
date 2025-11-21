@@ -5,7 +5,6 @@
 //  Created by cccakkke on 2025/11/21.
 //
 
-
 import SwiftUI
 import SwiftData
 import PhotosUI
@@ -18,14 +17,56 @@ struct PublishPostView: View {
     @State private var content = ""
     @State private var selectedImage: UIImage?
     @State private var isShowingImagePicker = false
-    @State private var photosPickerItem: PhotosPickerItem?
+    
+    // 获取当前登录用户
+    private var currentUser: User? {
+        guard let currentUsername = UserDefaults.standard.string(forKey: "currentUsername") else {
+            return nil
+        }
+        
+        let predicate = #Predicate<User> { user in
+            user.username == currentUsername
+        }
+        
+        let descriptor = FetchDescriptor<User>(predicate: predicate)
+        
+        do {
+            let users = try modelContext.fetch(descriptor)
+            return users.first
+        } catch {
+            print("Failed to fetch current user: \(error)")
+            return nil
+        }
+    }
     
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                // 显示当前用户信息
+                if let user = currentUser {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .foregroundColor(.blue)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(user.username)
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                            Text("即将发布帖子")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
+                
                 // 标题输入区域
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Title（Optioinal）")
+                    Text("Title（Optional）")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 4)
@@ -132,15 +173,25 @@ struct PublishPostView: View {
                 Button("Publish") {
                     publishPost()
                 }
-                .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || currentUser == nil)
             }
         }
         .sheet(isPresented: $isShowingImagePicker) {
             ImagePicker(selectedImage: $selectedImage)
         }
+        .alert("Error", isPresented: .constant(currentUser == nil)) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Unable to get user information. Please log in again.")
+        }
     }
     
     private func publishPost() {
+        guard let user = currentUser else {
+            print("No current user found")
+            return
+        }
+        
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedContent.isEmpty else { return }
         
@@ -148,17 +199,26 @@ struct PublishPostView: View {
             postId: UUID().uuidString,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             content: trimmedContent,
-            postImage: selectedImage?.jpegData(compressionQuality: 0.8)
+            postImage: selectedImage?.jpegData(compressionQuality: 0.8),
+            author: user
         )
         
-        modelContext.insert(newPost)
-        try? modelContext.save()
+        // 双向关联：帖子关联用户，用户也关联帖子
+        user.posts.append(newPost)
         
-        dismiss()
+        modelContext.insert(newPost)
+        
+        do {
+            try modelContext.save()
+            print("Post published successfully by user: \(user.username)")
+            dismiss()
+        } catch {
+            print("Failed to save post: \(error)")
+        }
     }
 }
 
-// MARK: - Image Picker
+// MARK: - Image Picker (保持不变)
 struct ImagePicker: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
     @Environment(\.dismiss) private var dismiss

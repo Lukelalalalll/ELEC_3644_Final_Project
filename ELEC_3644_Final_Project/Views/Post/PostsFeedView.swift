@@ -52,10 +52,38 @@ struct PostsFeedView: View {
     }
     
     private func addSamplePosts() {
-        for post in Post.mockPosts {
-            modelContext.insert(post)
+        // 获取或创建示例用户
+        let sampleUser: User
+        let userPredicate = #Predicate<User> { user in
+            user.username == "sample_user"
         }
-        try? modelContext.save()
+        
+        do {
+            let existingUsers = try modelContext.fetch(FetchDescriptor<User>(predicate: userPredicate))
+            if let existingUser = existingUsers.first {
+                sampleUser = existingUser
+            } else {
+                sampleUser = User(
+                    userId: UUID().uuidString,
+                    username: "sample_user",
+                    password: "password",
+                    email: "sample@example.com",
+                    gender: "Male"
+                )
+                modelContext.insert(sampleUser)
+            }
+            
+            // 创建示例帖子并关联用户
+            for post in Post.mockPosts {
+                post.author = sampleUser
+                sampleUser.posts.append(post)
+                modelContext.insert(post)
+            }
+            
+            try modelContext.save()
+        } catch {
+            print("Failed to add sample posts: \(error)")
+        }
     }
 }
 

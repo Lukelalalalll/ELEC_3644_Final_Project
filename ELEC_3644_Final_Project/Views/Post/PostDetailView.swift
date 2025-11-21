@@ -16,11 +16,43 @@ struct PostDetailView: View {
     @State private var commentText = ""
     @State private var liked = false
     @State private var likeCount: Int
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var showingDeleteAlert = false
     
     init(post: Post) {
         self.post = post
         self._likeCount = State(initialValue: post.likes)
         self._liked = State(initialValue: post.likes > 0)
+    }
+    
+    // 获取当前用户的方法
+    private var currentUser: User? {
+        guard let currentUsername = UserDefaults.standard.string(forKey: "currentUsername") else {
+            return nil
+        }
+        
+        let predicate = #Predicate<User> { user in
+            user.username == currentUsername
+        }
+        
+        let descriptor = FetchDescriptor<User>(predicate: predicate)
+        
+        do {
+            let users = try modelContext.fetch(descriptor)
+            return users.first
+        } catch {
+            print("Failed to fetch current user: \(error)")
+            return nil
+        }
+    }
+    
+    // 检查当前用户是否是帖子的作者
+    private var isCurrentUserAuthor: Bool {
+        guard let currentUser = currentUser, let postAuthor = post.author else {
+            return false
+        }
+        return currentUser.username == postAuthor.username
     }
     
     var body: some View {
@@ -45,6 +77,18 @@ struct PostDetailView: View {
                         }
                         
                         Spacer()
+                        
+                        // 如果是作者，显示删除按钮
+                        if isCurrentUserAuthor {
+                            Button(role: .destructive) {
+                                showingDeleteAlert = true
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     
                     // Title
@@ -101,13 +145,42 @@ struct PostDetailView: View {
                 )
                 .padding(.horizontal, 16)
                 
-                // Comment Input Card - 添加卡片效果
+                // 错误提示
+                if showError {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .font(.caption)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                
+                // Comment Input Card
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Publish your comment")
+                    Text("Like       Publish your comment")
                         .font(.headline)
                         .fontWeight(.semibold)
                     
                     HStack(spacing: 12) {
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                                liked.toggle()
+                                likeCount += liked ? 1 : -1
+                                post.likes = likeCount
+                                try? modelContext.save()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: liked ? "heart.fill" : "heart")
+                                    .font(.title2)
+                                    .foregroundColor(liked ? .red : .secondary)
+                                Text("\(likeCount)")
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(liked ? .red : .secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        
                         TextField("You can write down your comment here...", text: $commentText, axis: .vertical)
                             .textFieldStyle(.plain)
                             .padding(12)
@@ -170,46 +243,79 @@ struct PostDetailView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("帖子详情")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                        liked.toggle()
-                        likeCount += liked ? 1 : -1
-                        post.likes = likeCount
-                        try? modelContext.save()
-                    }
-                } label: {
-                    Image(systemName: liked ? "heart.fill" : "heart")
-                        .foregroundColor(liked ? .red : .primary)
-                        .font(.system(size: 18))
-                }
+        // 移除导航栏右侧的工具栏按钮
+        .alert("Delete Post", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                deletePost()
             }
+        } message: {
+            Text("Are you sure you want to delete this post? This action cannot be undone.")
         }
     }
     
+    // 统一的 addComment 方法
     private func addComment() {
         let trimmedComment = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedComment.isEmpty else { return }
         
+        guard let user = currentUser else {
+            errorMessage = "Please log in to comment"
+            showError = true
+            return
+        }
+        
         let newComment = PostComment(
             commentId: UUID().uuidString,
             content: trimmedComment,
+            author: user,
             post: post
         )
         
+        // 双向关联
         post.comments.append(newComment)
-        commentText = ""
+        user.postComments.append(newComment)
         
-        try? modelContext.save()
+        commentText = ""
+        showError = false
+        
+        do {
+            try modelContext.save()
+        } catch {
+            errorMessage = "Failed to save comment"
+            showError = true
+            print("Failed to save comment: \(error)")
+        }
     }
     
     private func deleteComment(_ comment: PostComment) {
         withAnimation(.easeInOut(duration: 0.3)) {
             if let index = post.comments.firstIndex(where: { $0.id == comment.id }) {
+                // 从帖子中移除评论
                 post.comments.remove(at: index)
+                
+                if let author = comment.author,
+                   let userCommentIndex = author.postComments.firstIndex(where: { $0.id == comment.id }) {
+                    author.postComments.remove(at: userCommentIndex)
+                }
+                
                 try? modelContext.save()
             }
+        }
+    }
+    
+    // 删除帖子的方法
+    private func deletePost() {
+        // 由于设置了 @Relationship(deleteRule: .cascade)，删除帖子会自动删除关联的评论
+        modelContext.delete(post)
+        
+        do {
+            try modelContext.save()
+            dismiss() // 删除成功后返回上一页
+        } catch {
+            errorMessage = "Failed to delete post"
+            showError = true
+            print("Failed to delete post: \(error)")
         }
     }
 }
@@ -220,6 +326,23 @@ struct CommentRow: View {
     let onDelete: () -> Void
     @State private var liked = false
     @State private var showingDeleteAlert = false
+    
+    // 检查当前用户是否是评论的作者
+    private var isCurrentUserAuthor: Bool {
+        guard let currentUsername = UserDefaults.standard.string(forKey: "currentUsername"),
+              let commentAuthor = comment.author else {
+            return false
+        }
+        return currentUsername == commentAuthor.username
+    }
+    
+    // 格式化评论日期
+    private var formattedCommentDate: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: comment.commentDate)
+    }
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -236,7 +359,8 @@ struct CommentRow: View {
                     
                     Spacer()
                     
-                    Text(comment.commentDate, style: .relative)
+                    // 修改这里：从相对时间改为具体日期时间
+                    Text(formattedCommentDate)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
@@ -275,15 +399,17 @@ struct CommentRow: View {
                     
                     Spacer()
                     
-                    // 删除按钮
-                    Button(role: .destructive) {
-                        showingDeleteAlert = true
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.caption)
-                            .foregroundColor(.red)
+                    // 删除按钮 - 只有评论的作者才能看到
+                    if isCurrentUserAuthor {
+                        Button(role: .destructive) {
+                            showingDeleteAlert = true
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
