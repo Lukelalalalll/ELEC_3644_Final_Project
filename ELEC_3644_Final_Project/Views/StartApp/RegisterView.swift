@@ -98,6 +98,8 @@ struct RegisterView: View {
                                 
                                 SecureField("Create a password", text: $password)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .textContentType(.none)
+                                    .autocapitalization(.none)
                             }
                             
                           
@@ -108,6 +110,8 @@ struct RegisterView: View {
                                 
                                 SecureField("Confirm your password", text: $confirmPassword)
                                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .textContentType(.none)  
+                                    .autocapitalization(.none)
                             }
                         }
                         .padding(.horizontal, 32)
