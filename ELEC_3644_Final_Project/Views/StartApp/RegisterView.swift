@@ -7,6 +7,8 @@
 
 import SwiftUI
 import SwiftData
+import FirebaseAuth
+
 
 struct RegisterView: View {
     @Environment(\.modelContext) private var modelContext
@@ -168,7 +170,7 @@ struct RegisterView: View {
         password == confirmPassword &&
         password.count >= 6
     }
-    
+    // 修改 register 函数
     private func register() {
         guard !username.isEmpty else {
             errorMessage = "Please enter a username"
@@ -197,56 +199,53 @@ struct RegisterView: View {
         isLoading = true
         showError = false
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            let usernamePredicate = #Predicate<User> { user in
-                user.username == username
-            }
-            
-            let emailPredicate = #Predicate<User> { user in
-                user.email == email
-            }
-            
-            do {
-                let existingUsers = try modelContext.fetch(FetchDescriptor<User>(predicate: usernamePredicate))
-                let existingEmails = try modelContext.fetch(FetchDescriptor<User>(predicate: emailPredicate))
-                
-                if !existingUsers.isEmpty {
-                    errorMessage = "Username already exists"
-                    showError = true
-                } else if !existingEmails.isEmpty {
-                    errorMessage = "Email already registered"
-                    showError = true
-                } else {
-                    let newUser = User(
-                        userId: UUID().uuidString,
-                        username: username,
-                        password: password,
-                        email: email,
-                        gender: selectedGender
-                    )
-                    
-                    modelContext.insert(newUser)
-                    
-                    do {
-                        try modelContext.save()
-                        // 保存登录状态和用户名
-                        UserDefaults.standard.set(true, forKey: "isLoggedIn")
-                        UserDefaults.standard.set(username, forKey: "currentUsername")
-                        
-                        // 注册成功，关闭当前页面并显示主应用
-                        dismiss()
-                        showMainApp = true
-                    } catch {
-                        errorMessage = "Registration failed. Please try again."
-                        showError = true
-                    }
+        // 检查用户名是否唯一
+        FirebaseService.shared.checkUsernameUnique(username) { isUnique in
+            if !isUnique {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Username already exists"
+                    self.showError = true
+                    self.isLoading = false
                 }
-            } catch {
-                errorMessage = "Registration failed. Please try again."
-                showError = true
+                return
             }
             
-            isLoading = false
+            // 注册用户到 Firebase
+            FirebaseService.shared.registerUser(
+                username: username,
+                email: email,
+                password: password,
+                gender: selectedGender
+            ) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(let user):
+                        // 保存到本地数据库（可选）
+                        self.modelContext.insert(user)
+                        
+                        do {
+                            try self.modelContext.save()
+                            // 保存登录状态和用户信息
+                            UserDefaults.standard.set(true, forKey: "isLoggedIn")
+                            UserDefaults.standard.set(user.username, forKey: "currentUsername")
+                            UserDefaults.standard.set(user.userId, forKey: "currentUserId")
+                            
+                            // 注册成功
+                            self.dismiss()
+                            self.showMainApp = true
+                        } catch {
+                            self.errorMessage = "Registration failed. Please try again."
+                            self.showError = true
+                        }
+                        
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.showError = true
+                    }
+                    
+                    self.isLoading = false
+                }
+            }
         }
     }
 }

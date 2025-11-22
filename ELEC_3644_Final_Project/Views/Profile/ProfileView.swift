@@ -5,105 +5,68 @@
 //  Created by cccakkke on 2025/11/20.
 //
 
-
 import SwiftUI
 import SwiftData
+import PhotosUI
+import FirebaseAuth  // 添加这行
+
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("isLoggedIn") private var isLoggedIn = false
     @AppStorage("currentUsername") private var currentUsername = ""
+    @AppStorage("currentUserId") private var currentUserId = ""
     
     @State private var currentUser: User?
     @State private var showLogoutAlert = false
+    @State private var isLoading = true
+    @State private var errorMessage = ""
+    @State private var userStats: UserStats?
+    
+    
+    // 头像相关状态
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var isUploadingAvatar = false
+    @State private var showImagePicker = false
+    @State private var avatarImage: UIImage?
     
     var body: some View {
         NavigationView {
             ZStack {
-                Color(.systemGroupedBackground)
-                    .ignoresSafeArea()
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color(.systemGroupedBackground),
+                        Color(.systemGroupedBackground).opacity(0.8)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
                 
-                if let user = currentUser {
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            // 用户头像和信息区域
-                            VStack(spacing: 16) {
-                                // 头像
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.blue.opacity(0.2))
-                                        .frame(width: 100, height: 100)
-                                    
-                                    Image(systemName: "person.circle.fill")
-                                        .font(.system(size: 80))
-                                        .foregroundColor(.blue)
-                                }
-                                .padding(.top, 20)
-                                
-                                // 用户名
-                                Text(user.username)
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                
-                                // 邮箱
-                                Text(user.email)
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-                                
-                                // 加入天数
-                                HStack {
-                                    Image(systemName: "calendar")
-                                    Text("Joined \(user.daysSinceJoin()) days ago")
-                                }
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            }
-                            .padding()
-                            .background(Color(.systemBackground))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                            
-                            // 个人信息卡片
-                            VStack(alignment: .leading, spacing: 16) {
-                                Text("Personal Information")
-                                    .font(.headline)
-                                    .padding(.bottom, 8)
-                                
-                                InfoRow(icon: "person.fill", title: "Username", value: user.username)
-                                InfoRow(icon: "envelope.fill", title: "Email", value: user.email)
-                                InfoRow(icon: "person.2.fill", title: "Gender", value: user.gender)
-                                InfoRow(icon: "number", title: "User ID", value: user.userId.prefix(8) + "...")
-                            }
-                            .padding()
-                            .background(Color(.systemBackground))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                            
-                            // 登出按钮
-                            Button(action: {
-                                showLogoutAlert = true
-                            }) {
-                                HStack {
-                                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    Text("Log Out")
-                                        .fontWeight(.semibold)
-                                }
-                                .foregroundColor(.red)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.red.opacity(0.1))
-                                .cornerRadius(12)
-                            }
-                            .padding(.horizontal)
-                            .padding(.top, 20)
-                            
-                            Spacer()
-                        }
-                        .padding(.vertical)
+                if isLoading {
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(.blue)
+                        
+                        Text("Loading Profile")
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                        
+                        Text("Fetching your data...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
+                    .padding(30)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color(.systemBackground))
+                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                    )
+                } else if let user = currentUser {
+                    userProfileView(user: user)
                 } else {
-                    // 加载状态或未找到用户
-                    ProgressView("Loading profile...")
+                    errorStateView
                 }
             }
             .navigationTitle("Profile")
@@ -116,62 +79,601 @@ struct ProfileView: View {
             } message: {
                 Text("Are you sure you want to log out?")
             }
+            .photosPicker(isPresented: $showImagePicker, selection: $selectedItem, matching: .images)
+            .onChange(of: selectedItem) { newItem in
+                Task {
+                    await loadImage(from: newItem)
+                }
+            }
         }
         .onAppear {
+            print("ProfileView appeared - currentUserId: \(currentUserId), isLoggedIn: \(isLoggedIn)")
             loadCurrentUser()
         }
     }
     
+    // 加载图片的方法
+    private func loadImage(from item: PhotosPickerItem?) async {
+        guard let item = item,
+              let data = try? await item.loadTransferable(type: Data.self),
+              let image = UIImage(data: data) else { return }
+        
+        await MainActor.run {
+            self.avatarImage = image
+            self.uploadAvatar(image: image)
+        }
+    }
+    
+    
+    private func loadUserAvatar() {
+           guard let user = currentUser else { return }
+           
+           // 首先检查本地是否有头像
+           if user.avatar != nil {
+               self.isLoading = false
+               return
+           }
+           
+           // 从 Firebase 下载头像
+           FirebaseService.shared.getUserAvatar(userId: user.userId) { avatarData in
+               DispatchQueue.main.async {
+                   if let avatarData = avatarData {
+                       user.updateAvatar(avatarData)
+                       self.saveUserToLocalStorage(user: user)
+                   }
+                   self.isLoading = false
+               }
+           }
+       }
+    
+    
+    // 上传头像
+    private func uploadAvatar(image: UIImage) {
+        guard let user = currentUser,
+              let imageData = image.jpegData(compressionQuality: 0.8) else {
+            print("❌ Failed to prepare image data for upload")
+            return
+        }
+        
+        print("🔄 Starting avatar upload to Firestore for user: \(user.userId)")
+        print("📊 Original image size: \(imageData.count) bytes")
+        isUploadingAvatar = true
+        
+        FirebaseService.shared.uploadUserAvatar(userId: user.userId, imageData: imageData) { result in
+            DispatchQueue.main.async {
+                self.isUploadingAvatar = false
+                
+                switch result {
+                case .success:
+                    print("✅ Avatar uploaded successfully to Firestore")
+                    // 更新本地用户头像
+                    user.updateAvatar(imageData)
+                    // 更新当前显示的图片
+                    self.avatarImage = image
+                    // 保存到本地数据库
+                    self.saveUserToLocalStorage(user: user)
+                    
+                    // 显示成功消息
+                    self.errorMessage = "Avatar updated successfully!"
+                    
+                    // 验证头像是否真的保存了
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.verifyAvatarStorage(user: user)
+                    }
+                    
+                case .failure(let error):
+                    print("❌ Failed to upload avatar to Firestore: \(error)")
+                    self.errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
+                    
+                    // 即使上传失败，也暂时显示选择的图片
+                    user.updateAvatar(imageData)
+                    self.avatarImage = image
+                    self.saveUserToLocalStorage(user: user)
+                }
+            }
+        }
+    }
+    private func verifyAvatarStorage(user: User) {
+        FirebaseService.shared.getUserAvatar(userId: user.userId) { avatarData in
+            if let avatarData = avatarData {
+                print("✅ Avatar storage verified - can retrieve: \(avatarData.count) bytes")
+            } else {
+                print("❌ Avatar storage failed - cannot retrieve")
+            }
+        }
+    }
+
+    // 替换 ProfileView.swift 中的 loadCurrentUser 方法
     private func loadCurrentUser() {
-        guard !currentUsername.isEmpty else { return }
-        
-        let predicate = #Predicate<User> { user in
-            user.username == currentUsername
+        guard !currentUserId.isEmpty else {
+            print("currentUserId is empty")
+            if !currentUsername.isEmpty {
+                loadUserByUsername()
+            } else {
+                isLoading = false
+                errorMessage = "No user information found"
+            }
+            return
         }
         
-        let descriptor = FetchDescriptor<User>(predicate: predicate)
+        isLoading = true
+        errorMessage = ""
         
+        print("Loading current user: \(currentUserId)")
+        print("isLoggedIn: \(isLoggedIn)")
+        
+        // 检查 Firebase Auth 状态
+        if Auth.auth().currentUser == nil {
+            print("Firebase Auth currentUser is nil, forcing logout")
+            logout()
+            return
+        }
+        
+        FirebaseService.shared.getCurrentUser { user in
+            DispatchQueue.main.async {
+                if let user = user {
+                    print("User loaded successfully: \(user.username)")
+                    self.currentUser = user
+                    
+                    // 加载用户头像
+                    self.loadUserAvatar(user: user)
+                    self.loadUserStats()
+                    
+                } else {
+                    print("Failed to load user data from Firebase")
+                    self.errorMessage = "Failed to load user data from server"
+                    self.isLoading = false
+                    
+                    // 如果无法加载用户数据，强制登出
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                        if self.currentUser == nil {
+                            print("Still no user data after retry, forcing logout")
+                            self.logout()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 替换现有的 loadUserAvatar 方法
+    private func loadUserAvatar(user: User) {
+        print("Loading avatar from Firestore for user: \(user.userId)")
+        
+        // 首先检查本地是否有头像
+        if let avatarData = user.avatar, let image = UIImage(data: avatarData) {
+            print("Using local avatar data")
+            self.avatarImage = image
+            self.isLoading = false
+            return
+        }
+        
+        // 从 Firestore 获取头像
+        FirebaseService.shared.getUserAvatar(userId: user.userId) { avatarData in
+            DispatchQueue.main.async {
+                if let avatarData = avatarData {
+                    print("Retrieved avatar data from Firestore, size: \(avatarData.count) bytes")
+                    user.updateAvatar(avatarData)
+                    self.avatarImage = UIImage(data: avatarData)
+                    self.saveUserToLocalStorage(user: user)
+                } else {
+                    print("No avatar data available in Firestore")
+                }
+                self.isLoading = false
+            }
+        }
+    }
+    
+    private var errorStateView: some View {
+        VStack(spacing: 25) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .font(.system(size: 70))
+                .foregroundColor(.orange)
+                .symbolRenderingMode(.hierarchical)
+            
+            VStack(spacing: 8) {
+                Text("User Not Found")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Unable to load user profile")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+            }
+            
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+            
+            Button("Retry") {
+                loadCurrentUser()
+            }
+            .buttonStyle(GradientButtonStyle())
+        }
+        .padding(30)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+        )
+        .padding(.horizontal, 20)
+    }
+    
+    private func userProfileView(user: User) -> some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                headerCard(user: user)
+                
+                logoutButton
+                
+                personalInfoCard(user: user)
+                
+                statsCard()
+                
+                Spacer()
+                    .frame(height: 40)
+            }
+            .padding(.vertical)
+        }
+        .onAppear {
+            if currentUser != nil && userStats == nil {
+                loadUserStats()
+            }
+        }
+    }
+    
+    private func headerCard(user: User) -> some View {
+        VStack(spacing: 20) {
+            Button(action: {
+                showImagePicker = true
+            }) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 120, height: 120)
+                        .shadow(color: .blue.opacity(0.3), radius: 10, x: 0, y: 5)
+                    
+                    if isUploadingAvatar {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(.white)
+                    } else if let avatarImage = avatarImage {
+                        Image(uiImage: avatarImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 110, height: 110)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: 4)
+                            )
+                    } else if let avatarData = user.avatar, let uiImage = UIImage(data: avatarData) {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 110, height: 110)
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: 4)
+                            )
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 100))
+                            .foregroundColor(.white)
+                            .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 3)
+                    }
+                    
+                    // 编辑图标
+                    Circle()
+                        .fill(Color.black.opacity(0.6))
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                        )
+                        .offset(x: 40, y: 40)
+                }
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .disabled(isUploadingAvatar)
+            
+            VStack(spacing: 8) {
+                Text(user.username)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                
+                Text(user.email)
+                    .font(.body)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(25)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+        )
+        .padding(.horizontal)
+    }
+    
+    private func personalInfoCard(user: User) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Image(systemName: "person.text.rectangle.fill")
+                    .foregroundColor(.blue)
+                    .font(.headline)
+                
+                Text("Personal Information")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+            }
+            
+            VStack(spacing: 16) {
+                EnhancedInfoRow(icon: "person.fill", title: "Username", value: user.username, color: .blue)
+                EnhancedInfoRow(icon: "envelope.fill", title: "Email", value: user.email, color: .green)
+                EnhancedInfoRow(icon: "person.2.fill", title: "Gender", value: user.gender, color: .orange)
+                EnhancedInfoRow(icon: "number.circle.fill", title: "User ID", value: user.userId, color: .purple)
+            }
+        }
+        .padding(25)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+        )
+        .padding(.horizontal)
+    }
+    
+    private func statsCard() -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack {
+                Image(systemName: "chart.bar.fill")
+                    .foregroundColor(.blue)
+                    .font(.headline)
+                
+                Text("Statistics")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+            }
+            
+            if let stats = userStats {
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 15) {
+                    StatCard(icon: "note.text", title: "Posts", value: "\(stats.postCount)", color: .blue)
+                    StatCard(icon: "message.fill", title: "Comments", value: "\(stats.commentCount)", color: .green)
+                    StatCard(icon: "heart.fill", title: "Total Likes", value: "\(stats.totalLikes)", color: .red)
+                    StatCard(icon: "chart.line.uptrend.xyaxis", title: "Engagement", value: "\(stats.postCount + stats.commentCount)", color: .purple)
+                }
+            } else {
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 15) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(height: 80)
+                            .overlay(
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            )
+                    }
+                }
+            }
+        }
+        .padding(25)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+        )
+        .padding(.horizontal)
+    }
+    
+    private var logoutButton: some View {
+        Button(action: {
+            showLogoutAlert = true
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.headline)
+                
+                Text("Log Out")
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .foregroundColor(.red)
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.red.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                    )
+            )
+        }
+        .padding(.horizontal)
+        .buttonStyle(ScaleButtonStyle())
+    }
+    
+    
+    private func loadUserStats() {
+        guard let user = currentUser else { return }
+        
+        FirebaseService.shared.fetchUserStats(userId: user.userId) { stats in
+            DispatchQueue.main.async {
+                self.userStats = stats
+                self.isLoading = false
+            }
+        }
+    }
+    
+    private func saveUserToLocalStorage(user: User) {
         do {
-            let users = try modelContext.fetch(descriptor)
-            currentUser = users.first
+            let descriptor = FetchDescriptor<User>()
+            let allUsers = try modelContext.fetch(descriptor)
+            
+            if let existingUser = allUsers.first(where: { $0.userId == user.userId }) {
+                existingUser.username = user.username
+                existingUser.email = user.email
+                existingUser.gender = user.gender
+            } else {
+                modelContext.insert(user)
+            }
+            try modelContext.save()
         } catch {
-            print("Error loading current user: \(error)")
+            print("Error saving user to local storage: \(error)")
         }
+    }
+    
+    private func loadUserByUsername() {
+        isLoading = false
+        errorMessage = "Please log in again"
     }
     
     private func logout() {
-        // 清除登录状态
+        FirebaseService.shared.logout()
         isLoggedIn = false
         currentUsername = ""
-        
-        // 这里可以添加其他清理操作，比如清除缓存等
+        currentUserId = ""
+        currentUser = nil
+        userStats = nil
+        avatarImage = nil // 清理头像缓存
     }
 }
 
-// 信息行组件
-struct InfoRow: View {
+struct EnhancedInfoRow: View {
     let icon: String
     let title: String
     let value: String
+    let color: Color
     
     var body: some View {
-        HStack {
+        HStack(spacing: 15) {
             Image(systemName: icon)
-                .foregroundColor(.blue)
-                .frame(width: 20)
+                .font(.body)
+                .foregroundColor(.white)
+                .frame(width: 36, height: 36)
+                .background(
+                    Circle()
+                        .fill(color.gradient)
+                )
             
-            Text(title)
-                .foregroundColor(.primary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontWeight(.medium)
+                
+                Text(value)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                    .fontWeight(.regular)
+            }
             
             Spacer()
-            
-            Text(value)
-                .foregroundColor(.secondary)
         }
+        .padding(.vertical, 4)
     }
+}
+
+struct StatCard: View {
+    let icon: String
+    let title: String
+    let value: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundColor(color)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(color.opacity(0.1))
+                )
+            
+            VStack(spacing: 4) {
+                Text(value)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fontWeight(.medium)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(15)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 3)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+}
+
+struct GradientButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundColor(.white)
+            .padding(.horizontal, 25)
+            .padding(.vertical, 12)
+            .background(
+                LinearGradient(
+                    colors: [.blue, .purple],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .cornerRadius(12)
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeInOut(duration: 0.2), value: configuration.isPressed)
+    }
+}
+
+
+
+struct UserStats {
+    let postCount: Int
+    let commentCount: Int
+    let totalLikes: Int
 }
 
 #Preview {
     ProfileView()
         .modelContainer(for: [User.self])
 }
+
