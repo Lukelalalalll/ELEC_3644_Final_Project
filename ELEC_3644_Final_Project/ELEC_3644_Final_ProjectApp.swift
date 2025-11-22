@@ -4,19 +4,6 @@
 //
 //  Created by cccakkke on 2025/11/18.
 //
-//
-//  ELEC_3644_Final_ProjectApp.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/18.
-//
-
-//
-//  ELEC_3644_Final_ProjectApp.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/18.
-//
 
 import SwiftUI
 import SwiftData
@@ -39,6 +26,12 @@ struct ELEC_3644_Final_ProjectApp: App {
         WindowGroup {
             if isLoggedIn {
                 MainTabContainerView()
+                    .onAppear {
+                        // 应用启动时的全局数据刷新
+                        print("应用启动，准备刷新数据...")
+                        // 设置强制刷新标志，确保用户登录后能看到最新数据
+                        UserDefaults.standard.set(true, forKey: "forceRefreshPosts")
+                    }
             } else {
                 WelcomeView()
             }

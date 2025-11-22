@@ -10,6 +10,7 @@ import SwiftUI
 struct MainTabContainerView: View {
     @State private var selectedTab: Int = 0
     @Namespace private var animation
+    @State private var hasRefreshedOnAppear = false
     
     var body: some View {
         ZStack {
@@ -33,7 +34,7 @@ struct MainTabContainerView: View {
                     VisualEffectBlur(blurStyle: .systemThinMaterial)
                         .overlay(
                             Rectangle()
-                                .fill(Color.primary.opacity(0.1))
+                                .fill(Color.primary.opacity(0.05))
                                 .mask(
                                     RoundedRectangle(cornerRadius: 22)
                                         .stroke(Color.primary.opacity(0.15), lineWidth: 0.5)
@@ -49,6 +50,23 @@ struct MainTabContainerView: View {
             // 忽略安全区域，让 TabBar 延伸到屏幕底部
             .ignoresSafeArea(.container, edges: .bottom)
         }
+        .onAppear {
+            // 应用启动时强制刷新数据
+            if !hasRefreshedOnAppear {
+                Task {
+                    await refreshAllData()
+                    hasRefreshedOnAppear = true
+                }
+            }
+        }
+        .onChange(of: selectedTab) { oldValue, newValue in
+            // 切换到 Posts 标签时刷新数据
+            if newValue == 1 {
+                Task {
+                    await refreshPostsData()
+                }
+            }
+        }
     }
     
     @ViewBuilder
@@ -60,6 +78,20 @@ struct MainTabContainerView: View {
         case 3: ProfileView()
         default: HomeView()
         }
+    }
+    
+    // 刷新所有数据
+    private func refreshAllData() async {
+        print("应用启动，开始刷新所有数据...")
+        await refreshPostsData()
+        // 可以在这里添加刷新课程数据等其他刷新逻辑
+    }
+    
+    // 刷新帖子数据
+    private func refreshPostsData() async {
+        print("刷新帖子数据...")
+        // 设置强制刷新标志，PostsFeedView 会在 onAppear 时检测这个标志
+        UserDefaults.standard.set(true, forKey: "forceRefreshPosts")
     }
 }
 
@@ -96,7 +128,7 @@ struct TabBarButton: View {
                     Image(systemName: icon)
                         .font(.system(size: 24, weight: .medium))
                         .foregroundColor(selectedTab == index ? .accentColor : .primary.opacity(0.7))
-                        .scaleEffect(selectedTab == index ? 1.5 : 1.0)
+                        .scaleEffect(selectedTab == index ? 1.6 : 1.0)
                         .offset(y: -5)
                 }
                 .frame(height: 24)
@@ -115,7 +147,6 @@ struct TabBarButton: View {
         .buttonStyle(ScaleButtonStyle())
     }
 }
-
 
 struct ScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

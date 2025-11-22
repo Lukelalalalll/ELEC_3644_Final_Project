@@ -61,4 +61,8 @@ class User {
     func dueSoonHomeworks() -> [Homework] {
         return allHomeworks().filter { $0.isDueSoon() }
     }
+    
+    func updateAvatar(_ imageData: Data?) {
+        self.avatar = imageData
+    }
 }
