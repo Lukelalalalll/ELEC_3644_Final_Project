@@ -50,6 +50,7 @@ struct MainTabContainerView: View {
             // 忽略安全区域，让 TabBar 延伸到屏幕底部
             .ignoresSafeArea(.container, edges: .bottom)
         }
+        .ignoresSafeArea(.keyboard)
         .onAppear {
             // 应用启动时强制刷新数据
             if !hasRefreshedOnAppear {
