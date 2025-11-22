@@ -186,6 +186,7 @@ struct PublishPostView: View {
         }
     }
     
+    // 修改 PublishPostView.swift 中的 publishPost 方法
     private func publishPost() {
         guard let user = currentUser else {
             print("No current user found")
@@ -195,25 +196,37 @@ struct PublishPostView: View {
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedContent.isEmpty else { return }
         
-        let newPost = Post(
-            postId: UUID().uuidString,
-            title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // 发布到 Firebase
+        FirebaseService.shared.publishPost(
+            title: trimmedTitle,
             content: trimmedContent,
-            postImage: selectedImage?.jpegData(compressionQuality: 0.8),
+            imageData: selectedImage?.jpegData(compressionQuality: 0.8),
             author: user
-        )
-        
-        // 双向关联：帖子关联用户，用户也关联帖子
-        user.posts.append(newPost)
-        
-        modelContext.insert(newPost)
-        
-        do {
-            try modelContext.save()
-            print("Post published successfully by user: \(user.username)")
-            dismiss()
-        } catch {
-            print("Failed to save post: \(error)")
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let post):
+                    // 同时保存到本地数据库
+                    self.modelContext.insert(post)
+                    user.posts.append(post)
+                    
+                    do {
+                        try self.modelContext.save()
+                        print("Post published successfully to Firebase by user: \(user.username)")
+                        self.dismiss()
+                    } catch {
+                        print("Failed to save post locally: \(error)")
+                        // 即使本地保存失败，Firebase 已经成功，仍然可以关闭页面
+                        self.dismiss()
+                    }
+                    
+                case .failure(let error):
+                    print("Failed to publish post to Firebase: \(error)")
+                    // 可以在这里添加错误提示
+                }
+            }
         }
     }
 }

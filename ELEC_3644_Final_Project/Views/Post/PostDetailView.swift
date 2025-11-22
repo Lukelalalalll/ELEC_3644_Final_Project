@@ -19,40 +19,39 @@ struct PostDetailView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var showingDeleteAlert = false
+    @State private var comments: [PostComment] = []
+    @State private var isAddingComment = false
+    @State private var isRefreshing = false
     
     init(post: Post) {
         self.post = post
         self._likeCount = State(initialValue: post.likes)
         self._liked = State(initialValue: post.likes > 0)
+        self._comments = State(initialValue: post.comments.sorted { $0.commentDate > $1.commentDate })
     }
     
     // 获取当前用户的方法
     private var currentUser: User? {
-        guard let currentUsername = UserDefaults.standard.string(forKey: "currentUsername") else {
+        guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
             return nil
         }
         
-        let predicate = #Predicate<User> { user in
-            user.username == currentUsername
-        }
-        
-        let descriptor = FetchDescriptor<User>(predicate: predicate)
-        
+        // 使用 userId 查找用户
         do {
-            let users = try modelContext.fetch(descriptor)
-            return users.first
+            let existingUsers = try modelContext.fetch(FetchDescriptor<User>())
+            return existingUsers.first(where: { $0.userId == currentUserId })
         } catch {
             print("Failed to fetch current user: \(error)")
             return nil
         }
     }
-    
+
     // 检查当前用户是否是帖子的作者
     private var isCurrentUserAuthor: Bool {
         guard let currentUser = currentUser, let postAuthor = post.author else {
             return false
         }
-        return currentUser.username == postAuthor.username
+        return currentUser.userId == postAuthor.userId
     }
     
     var body: some View {
@@ -128,7 +127,7 @@ struct PostDetailView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "message")
                                 .foregroundColor(.secondary)
-                            Text("\(post.commentCount)")
+                            Text("\(comments.count)")
                                 .font(.subheadline)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
@@ -140,7 +139,7 @@ struct PostDetailView: View {
                 }
                 .padding(20)
                 .background(
-                    RoundedRectangle(cornerRadius: 22)
+                    RoundedRectangle(cornerRadius: 30)
                         .fill(Color(.systemBackground))
                 )
                 .padding(.horizontal, 16)
@@ -166,7 +165,27 @@ struct PostDetailView: View {
                                 liked.toggle()
                                 likeCount += liked ? 1 : -1
                                 post.likes = likeCount
-                                try? modelContext.save()
+                                
+                                // 同步到 Firebase
+                                FirebaseService.shared.updatePostLikes(postId: post.postId, likes: likeCount) { result in
+                                    DispatchQueue.main.async {
+                                        switch result {
+                                        case .success:
+                                            // 保存到本地
+                                            do {
+                                                try modelContext.save()
+                                            } catch {
+                                                print("Failed to save likes locally: \(error)")
+                                            }
+                                        case .failure(let error):
+                                            print("Failed to update likes in Firebase: \(error)")
+                                            // 回滚点赞操作
+                                            liked.toggle()
+                                            likeCount += liked ? -1 : 1
+                                            post.likes = likeCount
+                                        }
+                                    }
+                                }
                             }
                         } label: {
                             HStack(spacing: 4) {
@@ -191,11 +210,16 @@ struct PostDetailView: View {
                         Button {
                             addComment()
                         } label: {
-                            Image(systemName: "paperplane.circle.fill")
-                                .font(.title2)
-                                .foregroundColor(commentText.isEmpty ? .secondary : .blue)
+                            if isAddingComment {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "paperplane.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(commentText.isEmpty ? .secondary : .blue)
+                            }
                         }
-                        .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(commentText.isEmpty || isAddingComment)
                     }
                 }
                 .padding(20)
@@ -207,12 +231,21 @@ struct PostDetailView: View {
                 
                 // Comments Section
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("Comment (\(post.commentCount))")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 16)
+                    HStack {
+                        Text("Comment (\(comments.count))")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        
+                        Spacer()
+                        
+                        if isRefreshing {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                    }
+                    .padding(.horizontal, 16)
                     
-                    if post.comments.isEmpty {
+                    if comments.isEmpty {
                         VStack(spacing: 12) {
                             Image(systemName: "bubble.left")
                                 .font(.system(size: 44))
@@ -228,7 +261,7 @@ struct PostDetailView: View {
                         .padding(.vertical, 60)
                     } else {
                         LazyVStack(spacing: 12) {
-                            ForEach(post.comments) { comment in
+                            ForEach(comments) { comment in
                                 CommentRow(comment: comment, onDelete: {
                                     deleteComment(comment)
                                 })
@@ -243,7 +276,28 @@ struct PostDetailView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("帖子详情")
         .navigationBarTitleDisplayMode(.inline)
-        // 移除导航栏右侧的工具栏按钮
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    Task {
+                        await refreshComments()
+                    }
+                }) {
+                    if isRefreshing {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRefreshing)
+            }
+        }
+        .onAppear {
+            Task {
+                await refreshComments()
+            }
+        }
         .alert("Delete Post", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
@@ -254,7 +308,36 @@ struct PostDetailView: View {
         }
     }
     
-    // 统一的 addComment 方法
+    private func refreshComments() async {
+        await MainActor.run {
+            isRefreshing = true
+        }
+        
+        // 使用正确的扩展名
+        await PostDetailView.forceSyncCommentsForPost(post, context: modelContext)
+        
+        await MainActor.run {
+            // 更新 @State 变量
+            self.comments = post.comments.sorted { $0.commentDate > $1.commentDate }
+            self.likeCount = post.likes
+            self.liked = post.likes > 0
+            self.isRefreshing = false
+            print("刷新完成，评论数量: \(self.comments.count)")
+        }
+    }
+
+    // 添加辅助方法
+    @MainActor
+    private func getLocalUser(by userId: String) -> User? {
+        do {
+            let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.userId == userId })
+            return try modelContext.fetch(descriptor).first
+        } catch {
+            print("获取本地用户失败: \(error)")
+            return nil
+        }
+    }
+    
     private func addComment() {
         let trimmedComment = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedComment.isEmpty else { return }
@@ -265,62 +348,116 @@ struct PostDetailView: View {
             return
         }
         
-        let newComment = PostComment(
-            commentId: UUID().uuidString,
+        isAddingComment = true
+        
+        // 直接上传到 Firebase，成功后添加到本地
+        FirebaseService.shared.addComment(
+            postId: post.postId,
             content: trimmedComment,
-            author: user,
-            post: post
-        )
-        
-        // 双向关联
-        post.comments.append(newComment)
-        user.postComments.append(newComment)
-        
-        commentText = ""
-        showError = false
-        
-        do {
-            try modelContext.save()
-        } catch {
-            errorMessage = "Failed to save comment"
-            showError = true
-            print("Failed to save comment: \(error)")
-        }
-    }
-    
-    private func deleteComment(_ comment: PostComment) {
-        withAnimation(.easeInOut(duration: 0.3)) {
-            if let index = post.comments.firstIndex(where: { $0.id == comment.id }) {
-                // 从帖子中移除评论
-                post.comments.remove(at: index)
+            author: user
+        ) { result in
+            DispatchQueue.main.async {
+                self.isAddingComment = false
                 
-                if let author = comment.author,
-                   let userCommentIndex = author.postComments.firstIndex(where: { $0.id == comment.id }) {
-                    author.postComments.remove(at: userCommentIndex)
+                switch result {
+                case .success(let firebaseComment):
+                    // 设置评论的关联关系
+                    firebaseComment.post = self.post
+                    firebaseComment.author = user
+                    
+                    // 添加到本地评论列表
+                    self.comments.insert(firebaseComment, at: 0)
+                    self.post.comments.append(firebaseComment)
+                    user.postComments.append(firebaseComment)
+                    
+                    self.commentText = ""
+                    self.showError = false
+                    
+                    // 保存到本地
+                    do {
+                        self.modelContext.insert(firebaseComment)
+                        try self.modelContext.save()
+                        print("评论发布成功，用户: \(user.username)")
+                    } catch {
+                        print("Failed to save comment locally: \(error)")
+                    }
+                    
+                case .failure(let error):
+                    self.errorMessage = "Failed to add comment: \(error.localizedDescription)"
+                    self.showError = true
                 }
-                
-                try? modelContext.save()
             }
         }
     }
     
-    // 删除帖子的方法
+    private func deleteComment(_ comment: PostComment) {
+        // 从 Firebase 删除
+        FirebaseService.shared.deleteComment(commentId: comment.commentId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        // 从本地评论列表中移除
+                        if let index = self.comments.firstIndex(where: { $0.commentId == comment.commentId }) {
+                            self.comments.remove(at: index)
+                        }
+                        
+                        // 从帖子的评论列表中移除
+                        if let postIndex = self.post.comments.firstIndex(where: { $0.commentId == comment.commentId }) {
+                            self.post.comments.remove(at: postIndex)
+                        }
+                        
+                        // 从作者的评论列表中移除
+                        if let author = comment.author,
+                           let userCommentIndex = author.postComments.firstIndex(where: { $0.commentId == comment.commentId }) {
+                            author.postComments.remove(at: userCommentIndex)
+                        }
+                        
+                        // 从数据库中删除
+                        self.modelContext.delete(comment)
+                        
+                        // 保存更改
+                        do {
+                            try self.modelContext.save()
+                        } catch {
+                            print("Failed to save after comment deletion: \(error)")
+                        }
+                    }
+                    
+                case .failure(let error):
+                    print("Failed to delete comment from Firebase: \(error)")
+                }
+            }
+        }
+    }
+    
+    // 更新删除帖子功能
     private func deletePost() {
-        // 由于设置了 @Relationship(deleteRule: .cascade)，删除帖子会自动删除关联的评论
-        modelContext.delete(post)
-        
-        do {
-            try modelContext.save()
-            dismiss() // 删除成功后返回上一页
-        } catch {
-            errorMessage = "Failed to delete post"
-            showError = true
-            print("Failed to delete post: \(error)")
+        // 从 Firebase 删除
+        FirebaseService.shared.deletePost(postId: post.postId) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    // 从本地删除
+                    self.modelContext.delete(self.post)
+                    do {
+                        try self.modelContext.save()
+                        self.dismiss()
+                    } catch {
+                        self.errorMessage = "Failed to delete post locally"
+                        self.showError = true
+                    }
+                    
+                case .failure(let error):
+                    self.errorMessage = "Failed to delete post: \(error.localizedDescription)"
+                    self.showError = true
+                }
+            }
         }
     }
 }
 
-// MARK: - Comment Row
+// MARK: - Comment Row (保持不变)
 struct CommentRow: View {
     let comment: PostComment
     let onDelete: () -> Void
@@ -329,11 +466,11 @@ struct CommentRow: View {
     
     // 检查当前用户是否是评论的作者
     private var isCurrentUserAuthor: Bool {
-        guard let currentUsername = UserDefaults.standard.string(forKey: "currentUsername"),
+        guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId"),
               let commentAuthor = comment.author else {
             return false
         }
-        return currentUsername == commentAuthor.username
+        return currentUserId == commentAuthor.userId
     }
     
     // 格式化评论日期
@@ -359,7 +496,6 @@ struct CommentRow: View {
                     
                     Spacer()
                     
-                    // 修改这里：从相对时间改为具体日期时间
                     Text(formattedCommentDate)
                         .font(.caption2)
                         .foregroundColor(.secondary)
@@ -370,6 +506,7 @@ struct CommentRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 
                 HStack(spacing: 16) {
+                    // 评论点赞功能
                     Button {
                         withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
                             liked.toggle()
@@ -377,6 +514,22 @@ struct CommentRow: View {
                                 comment.like()
                             } else {
                                 comment.unlike()
+                            }
+                            
+                            // 同步到 Firebase
+                            FirebaseService.shared.updateCommentLikes(commentId: comment.commentId, likes: comment.likes) { result in
+                                DispatchQueue.main.async {
+                                    if case .failure(let error) = result {
+                                        print("Failed to update comment likes in Firebase: \(error)")
+                                        // 回滚点赞操作
+                                        liked.toggle()
+                                        if liked {
+                                            comment.unlike()
+                                        } else {
+                                            comment.like()
+                                        }
+                                    }
+                                }
                             }
                         }
                     } label: {
@@ -426,6 +579,105 @@ struct CommentRow: View {
             }
         } message: {
             Text("Are you sure you want to delete this comment? This action cannot be undone.")
+        }
+        .onAppear {
+            // 初始化点赞状态
+            liked = comment.likes > 0
+        }
+    }
+}
+
+// MARK: - 评论同步扩展 - 修复版本
+extension PostDetailView {
+    static func forceSyncCommentsForPost(_ post: Post, context: ModelContext) async {
+        do {
+            print("开始同步评论，帖子ID: \(post.postId)")
+            let firebaseComments = try await FirebaseService.shared.fetchCommentsForPostSync(postId: post.postId)
+            print("从Firebase获取到 \(firebaseComments.count) 条评论")
+            
+            await MainActor.run {
+                // 创建评论ID映射
+                let existingCommentIds = Set(post.comments.map { $0.commentId })
+                let newCommentIds = Set(firebaseComments.map { $0.commentId })
+                
+                print("本地已有评论ID: \(existingCommentIds)")
+                print("Firebase返回评论ID: \(newCommentIds)")
+                
+                // 只删除真正不存在的评论
+                var commentsToRemove: [PostComment] = []
+                for comment in post.comments {
+                    if !newCommentIds.contains(comment.commentId) {
+                        commentsToRemove.append(comment)
+                        print("准备删除评论: \(comment.commentId)")
+                    }
+                }
+                
+                // 执行删除
+                for comment in commentsToRemove {
+                    context.delete(comment)
+                    if let index = post.comments.firstIndex(where: { $0.commentId == comment.commentId }) {
+                        post.comments.remove(at: index)
+                    }
+                }
+                
+                // 添加新评论
+                var addedCount = 0
+                for fbComment in firebaseComments {
+                    if !existingCommentIds.contains(fbComment.commentId) {
+                        // 只添加新评论，不更新现有评论
+                        let newComment = PostComment(
+                            commentId: fbComment.commentId,
+                            content: fbComment.content,
+                            author: nil,
+                            post: post
+                        )
+                        newComment.likes = fbComment.likes
+                        newComment.commentDate = fbComment.commentDate
+                        
+                        // 处理作者信息
+                        if let fbAuthor = fbComment.author {
+                            if let localUser = getLocalUser(by: fbAuthor.userId, context: context) {
+                                newComment.author = localUser
+                            } else {
+                                let newUser = User(
+                                    userId: fbAuthor.userId,
+                                    username: fbAuthor.username,
+                                    password: "",
+                                    email: fbAuthor.email ?? "",
+                                    gender: fbAuthor.gender ?? "Unknown"
+                                )
+                                context.insert(newUser)
+                                newComment.author = newUser
+                            }
+                        }
+                        
+                        context.insert(newComment)
+                        post.comments.append(newComment)
+                        addedCount += 1
+                        print("添加新评论: \(fbComment.commentId)")
+                    }
+                }
+                
+                // 重新排序评论
+                post.comments.sort { $0.commentDate > $1.commentDate }
+                
+                try? context.save()
+                print("同步完成：删除了 \(commentsToRemove.count) 条评论，添加了 \(addedCount) 条评论，总共 \(post.comments.count) 条评论")
+            }
+        } catch {
+            print("评论同步失败：\(error)")
+        }
+    }
+    
+    // 辅助方法：通过用户ID获取本地用户
+    @MainActor
+    private static func getLocalUser(by userId: String, context: ModelContext) -> User? {
+        do {
+            let descriptor = FetchDescriptor<User>(predicate: #Predicate { $0.userId == userId })
+            return try context.fetch(descriptor).first
+        } catch {
+            print("获取本地用户失败: \(error)")
+            return nil
         }
     }
 }
