@@ -162,9 +162,44 @@ class FirebaseService: ObservableObject {
 extension FirebaseService {
     
     // 发布帖子到 Firebase
+    // 发布帖子到 Firebase（支持图片）
     func publishPost(title: String, content: String, imageData: Data? = nil, author: User, completion: @escaping (Result<Post, Error>) -> Void) {
         let postId = UUID().uuidString
-        let postData: [String: Any] = [
+        
+        // 如果有图片，先上传图片
+        if let imageData = imageData {
+            uploadPostImage(postId: postId, imageData: imageData) { [weak self] result in
+                switch result {
+                case .success(let imageURL):
+                    // 图片上传成功，发布包含图片URL的帖子
+                    self?.createPostInFirestore(
+                        postId: postId,
+                        title: title,
+                        content: content,
+                        imageURL: imageURL,
+                        author: author,
+                        completion: completion
+                    )
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        } else {
+            // 没有图片，直接发布帖子
+            createPostInFirestore(
+                postId: postId,
+                title: title,
+                content: content,
+                imageURL: nil,
+                author: author,
+                completion: completion
+            )
+        }
+    }
+
+    // 辅助方法：在 Firestore 中创建帖子
+    private func createPostInFirestore(postId: String, title: String, content: String, imageURL: String?, author: User, completion: @escaping (Result<Post, Error>) -> Void) {
+        var postData: [String: Any] = [
             "postId": postId,
             "title": title,
             "content": content,
@@ -174,20 +209,41 @@ extension FirebaseService {
             "authorUsername": author.username
         ]
         
+        // 如果有图片URL，添加到数据中
+        if let imageURL = imageURL {
+            postData["imageURL"] = imageURL
+        }
+        
         db.collection("posts").document(postId).setData(postData) { error in
             if let error = error {
                 completion(.failure(error))
             } else {
-                // 如果有图片，上传到 Storage（后续可以添加）
+                // 创建本地 Post 对象
                 let post = Post(
                     postId: postId,
                     title: title,
                     content: content,
-                    postImage: imageData,
+                    postImage: nil, // 不直接存储图片数据
                     author: author
                 )
+                
+                // 如果有图片URL，稍后下载
+                if let imageURL = imageURL {
+                    // 异步下载图片到本地
+                    self.downloadAndCachePostImage(postId: postId) { imageData in
+                        post.postImage = imageData
+                    }
+                }
+                
                 completion(.success(post))
             }
+        }
+    }
+
+    // 下载并缓存帖子图片
+    private func downloadAndCachePostImage(postId: String, completion: @escaping (Data?) -> Void) {
+        downloadPostImage(postId: postId) { imageData in
+            completion(imageData)
         }
     }
     
@@ -217,6 +273,7 @@ extension FirebaseService {
                     let content = data["content"] as? String ?? ""
                     let likes = data["likes"] as? Int ?? 0
                     let authorId = data["authorId"] as? String ?? ""
+                    let imageURL = data["imageURL"] as? String // 获取图片URL
                     
                     // 首先获取作者信息
                     self.getUserData(userId: authorId) { result in
@@ -226,7 +283,7 @@ extension FirebaseService {
                                 postId: postId,
                                 title: title,
                                 content: content,
-                                postImage: nil,
+                                postImage: nil, // 初始化为nil，稍后下载
                                 author: author
                             )
                             post.likes = likes
@@ -235,23 +292,45 @@ extension FirebaseService {
                                 post.postDate = timestamp.dateValue()
                             }
                             
-                            // 获取评论
-                            self.fetchCommentsForPost(postId: postId) { comments in
-                                // 确保每个评论都有正确的作者关系
-                                for comment in comments {
-                                    comment.post = post
-                                    // 获取评论作者信息
-                                    if let commentAuthorId = comment.author?.userId {
-                                        self.getUserData(userId: commentAuthorId) { result in
-                                            if case .success(let commentAuthor) = result {
-                                                comment.author = commentAuthor
+                            // 如果有图片URL，下载图片
+                            if let imageURL = imageURL {
+                                self.downloadPostImage(postId: postId) { imageData in
+                                    post.postImage = imageData
+                                    
+                                    // 获取评论
+                                    self.fetchCommentsForPost(postId: postId) { comments in
+                                        for comment in comments {
+                                            comment.post = post
+                                            if let commentAuthorId = comment.author?.userId {
+                                                self.getUserData(userId: commentAuthorId) { result in
+                                                    if case .success(let commentAuthor) = result {
+                                                        comment.author = commentAuthor
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        post.comments = comments
+                                        posts.append(post)
+                                        group.leave()
+                                    }
+                                }
+                            } else {
+                                // 没有图片，直接处理评论
+                                self.fetchCommentsForPost(postId: postId) { comments in
+                                    for comment in comments {
+                                        comment.post = post
+                                        if let commentAuthorId = comment.author?.userId {
+                                            self.getUserData(userId: commentAuthorId) { result in
+                                                if case .success(let commentAuthor) = result {
+                                                    comment.author = commentAuthor
+                                                }
                                             }
                                         }
                                     }
+                                    post.comments = comments
+                                    posts.append(post)
+                                    group.leave()
                                 }
-                                post.comments = comments
-                                posts.append(post)
-                                group.leave()
                             }
                             
                         case .failure(let error):
@@ -631,6 +710,90 @@ extension FirebaseService {
             
             let avatarURL = data["avatarURL"] as? String
             completion(avatarURL)
+        }
+    }
+}
+
+
+
+
+// MARK: - Post Image Storage Methods
+extension FirebaseService {
+    
+    // 上传帖子图片到 Firebase Storage
+    func uploadPostImage(postId: String, imageData: Data, completion: @escaping (Result<String, Error>) -> Void) {
+        let storageRef = Storage.storage().reference()
+        let imageRef = storageRef.child("post_images/\(postId).jpg")
+        
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        
+        print("🔄 Starting post image upload to Firebase Storage for post: \(postId)")
+        print("📊 Image data size: \(imageData.count) bytes")
+        
+        imageRef.putData(imageData, metadata: metadata) { metadata, error in
+            if let error = error {
+                print("❌ Post image upload to Storage failed: \(error)")
+                completion(.failure(error))
+                return
+            }
+            
+            print("✅ Post image successfully uploaded to Storage")
+            
+            // 获取下载 URL
+            imageRef.downloadURL { url, error in
+                if let error = error {
+                    print("❌ Failed to get download URL for post image: \(error)")
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let downloadURL = url else {
+                    completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get download URL"])))
+                    return
+                }
+                
+                print("✅ Successfully got post image download URL: \(downloadURL.absoluteString)")
+                completion(.success(downloadURL.absoluteString))
+            }
+        }
+    }
+    
+    // 从 Firebase Storage 下载帖子图片
+    func downloadPostImage(postId: String, completion: @escaping (Data?) -> Void) {
+        let storageRef = Storage.storage().reference()
+        let imageRef = storageRef.child("post_images/\(postId).jpg")
+        
+        let maxSize: Int64 = 10 * 1024 * 1024 // 10MB
+        
+        imageRef.getData(maxSize: maxSize) { data, error in
+            if let error = error {
+                print("❌ Failed to download post image from Storage: \(error)")
+                completion(nil)
+                return
+            }
+            
+            if let data = data {
+                print("✅ Successfully downloaded post image from Storage, size: \(data.count) bytes")
+                completion(data)
+            } else {
+                print("ℹ️ No post image data found in Storage for post: \(postId)")
+                completion(nil)
+            }
+        }
+    }
+    
+    // 删除帖子图片
+    func deletePostImage(postId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let storageRef = Storage.storage().reference()
+        let imageRef = storageRef.child("post_images/\(postId).jpg")
+        
+        imageRef.delete { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
         }
     }
 }
