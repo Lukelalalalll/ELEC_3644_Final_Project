@@ -1,9 +1,3 @@
-//
-//  ProfileView.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/20.
-//
 
 import SwiftUI
 import SwiftData
@@ -105,51 +99,34 @@ struct ProfileView: View {
     }
     
     
-    private func loadUserAvatar() {
-           guard let user = currentUser else { return }
-           
-           // 首先检查本地是否有头像
-           if user.avatar != nil {
-               self.isLoading = false
-               return
-           }
-           
-           // 从 Firebase 下载头像
-           FirebaseService.shared.getUserAvatar(userId: user.userId) { avatarData in
-               DispatchQueue.main.async {
-                   if let avatarData = avatarData {
-                       user.updateAvatar(avatarData)
-                       self.saveUserToLocalStorage(user: user)
-                   }
-                   self.isLoading = false
-               }
-           }
-       }
-    
-    
-    // 上传头像
+    // 在 ProfileView.swift 中替换 uploadAvatar 方法
     private func uploadAvatar(image: UIImage) {
         guard let user = currentUser,
-              let imageData = image.jpegData(compressionQuality: 0.8) else {
+              let imageData = image.jpegData(compressionQuality: 0.7) else { // 适当压缩
             print("❌ Failed to prepare image data for upload")
+            errorMessage = "Failed to prepare image for upload"
             return
         }
         
-        print("🔄 Starting avatar upload to Firestore for user: \(user.userId)")
-        print("📊 Original image size: \(imageData.count) bytes")
+        print("🔄 Starting avatar upload to Firebase Storage for user: \(user.userId)")
+        print("📊 Compressed image size: \(imageData.count) bytes")
+        
         isUploadingAvatar = true
         
-        FirebaseService.shared.uploadUserAvatar(userId: user.userId, imageData: imageData) { result in
+        // 使用新的 Storage 上传方法
+        FirebaseService.shared.uploadUserAvatarToStorage(userId: user.userId, imageData: imageData) { result in
             DispatchQueue.main.async {
                 self.isUploadingAvatar = false
                 
                 switch result {
-                case .success:
-                    print("✅ Avatar uploaded successfully to Firestore")
+                case .success(let downloadURL):
+                    print("✅ Avatar uploaded successfully to Storage")
+                    print("📎 Download URL: \(downloadURL.absoluteString)")
+                    
                     // 更新本地用户头像
                     user.updateAvatar(imageData)
-                    // 更新当前显示的图片
                     self.avatarImage = image
+                    
                     // 保存到本地数据库
                     self.saveUserToLocalStorage(user: user)
                     
@@ -162,10 +139,10 @@ struct ProfileView: View {
                     }
                     
                 case .failure(let error):
-                    print("❌ Failed to upload avatar to Firestore: \(error)")
+                    print("❌ Failed to upload avatar to Storage: \(error)")
                     self.errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
                     
-                    // 即使上传失败，也暂时显示选择的图片
+                    // 即使上传失败，也暂时显示选择的图片（本地缓存）
                     user.updateAvatar(imageData)
                     self.avatarImage = image
                     self.saveUserToLocalStorage(user: user)
@@ -173,12 +150,14 @@ struct ProfileView: View {
             }
         }
     }
+
+    // 修改 verifyAvatarStorage 方法
     private func verifyAvatarStorage(user: User) {
-        FirebaseService.shared.getUserAvatar(userId: user.userId) { avatarData in
-            if let avatarData = avatarData {
-                print("✅ Avatar storage verified - can retrieve: \(avatarData.count) bytes")
+        FirebaseService.shared.getUserAvatarURL(userId: user.userId) { avatarURL in
+            if let avatarURL = avatarURL, !avatarURL.isEmpty {
+                print("✅ Avatar storage verified - URL: \(avatarURL)")
             } else {
-                print("❌ Avatar storage failed - cannot retrieve")
+                print("❌ Avatar storage failed - no URL found")
             }
         }
     }
@@ -215,9 +194,11 @@ struct ProfileView: View {
                     print("User loaded successfully: \(user.username)")
                     self.currentUser = user
                     
-                    // 加载用户头像
-                    self.loadUserAvatar(user: user)
+                    // 先加载用户统计
                     self.loadUserStats()
+                    
+                    // 然后加载头像
+                    self.loadUserAvatar(user: user)
                     
                 } else {
                     print("Failed to load user data from Firebase")
@@ -236,28 +217,24 @@ struct ProfileView: View {
         }
     }
 
-    // 替换现有的 loadUserAvatar 方法
+    // 替换 loadUserAvatar 方法
     private func loadUserAvatar(user: User) {
-        print("Loading avatar from Firestore for user: \(user.userId)")
+        print("Loading avatar from Firebase Storage for user: \(user.userId)")
         
-        // 首先检查本地是否有头像
-        if let avatarData = user.avatar, let image = UIImage(data: avatarData) {
-            print("Using local avatar data")
-            self.avatarImage = image
-            self.isLoading = false
-            return
-        }
-        
-        // 从 Firestore 获取头像
-        FirebaseService.shared.getUserAvatar(userId: user.userId) { avatarData in
+        // 总是从 Firebase Storage 获取最新的头像
+        FirebaseService.shared.downloadUserAvatarFromStorage(userId: user.userId) { avatarData in
             DispatchQueue.main.async {
-                if let avatarData = avatarData {
-                    print("Retrieved avatar data from Firestore, size: \(avatarData.count) bytes")
+                if let avatarData = avatarData, let image = UIImage(data: avatarData) {
+                    print("✅ Retrieved avatar data from Storage, size: \(avatarData.count) bytes")
                     user.updateAvatar(avatarData)
-                    self.avatarImage = UIImage(data: avatarData)
+                    self.avatarImage = image
                     self.saveUserToLocalStorage(user: user)
                 } else {
-                    print("No avatar data available in Firestore")
+                    print("ℹ️ No avatar data available in Storage")
+                    // 清除本地可能存在的旧头像数据
+                    user.updateAvatar(nil)
+                    self.avatarImage = nil
+                    self.saveUserToLocalStorage(user: user)
                 }
                 self.isLoading = false
             }
@@ -348,6 +325,7 @@ struct ProfileView: View {
                             .scaleEffect(1.2)
                             .tint(.white)
                     } else if let avatarImage = avatarImage {
+                        // 优先显示当前加载的头像
                         Image(uiImage: avatarImage)
                             .resizable()
                             .scaledToFill()
@@ -358,6 +336,7 @@ struct ProfileView: View {
                                     .stroke(Color.white, lineWidth: 4)
                             )
                     } else if let avatarData = user.avatar, let uiImage = UIImage(data: avatarData) {
+                        // 其次显示本地存储的头像
                         Image(uiImage: uiImage)
                             .resizable()
                             .scaledToFill()
@@ -368,6 +347,7 @@ struct ProfileView: View {
                                     .stroke(Color.white, lineWidth: 4)
                             )
                     } else {
+                        // 最后显示默认头像
                         Image(systemName: "person.circle.fill")
                             .font(.system(size: 100))
                             .foregroundColor(.white)
@@ -408,6 +388,29 @@ struct ProfileView: View {
         )
         .padding(.horizontal)
     }
+    
+    
+    
+    private func checkAvatarStatus(user: User) {
+        print("=== Avatar Status Check ===")
+        print("User ID: \(user.userId)")
+        print("Local avatar data: \(user.avatar != nil ? "Exists (\(user.avatar?.count ?? 0) bytes)" : "Nil")")
+        print("Current avatarImage: \(avatarImage != nil ? "Exists" : "Nil")")
+        
+        // 检查 Firestore 中的 avatarURL
+        FirebaseService.shared.getUserAvatarURL(userId: user.userId) { avatarURL in
+            print("Firestore avatarURL: \(avatarURL ?? "Nil")")
+            
+            // 检查 Storage 中是否有文件
+            FirebaseService.shared.downloadUserAvatarFromStorage(userId: user.userId) { data in
+                print("Storage avatar data: \(data != nil ? "Exists (\(data?.count ?? 0) bytes)" : "Nil")")
+            }
+        }
+    }
+    
+    
+    
+    
     
     private func personalInfoCard(user: User) -> some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -676,4 +679,5 @@ struct UserStats {
     ProfileView()
         .modelContainer(for: [User.self])
 }
+
 
