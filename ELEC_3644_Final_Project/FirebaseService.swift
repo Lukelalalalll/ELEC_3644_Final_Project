@@ -7,6 +7,7 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseStorage
 
 class FirebaseService: ObservableObject {
     static let shared = FirebaseService()
@@ -32,7 +33,7 @@ class FirebaseService: ObservableObject {
                 "username": username,
                 "email": email,
                 "gender": gender,
-                "avatar": "", // 添加空的 avatar 字段
+                "avatarURL": "", // 添加空的 avatar 字段
                 "joinDate": Timestamp(date: Date())
             ]
             
@@ -92,6 +93,7 @@ class FirebaseService: ObservableObject {
             let username = data["username"] as? String ?? ""
             let email = data["email"] as? String ?? ""
             let gender = data["gender"] as? String ?? "Male"
+            let avatarURL = data["avatarURL"] as? String ?? "" // 获取 Storage URL
             
             let user = User(
                 userId: userId,
@@ -101,15 +103,7 @@ class FirebaseService: ObservableObject {
                 gender: gender
             )
             
-            // 直接从 Firestore 获取头像数据
-            if let base64String = data["avatar"] as? String,
-               !base64String.isEmpty,
-               let avatarData = Data(base64Encoded: base64String) {
-                print("✅ Loaded avatar from Firestore, size: \(avatarData.count) bytes")
-                user.updateAvatar(avatarData)
-            } else {
-                print("ℹ️ No avatar data found in Firestore for user: \(userId)")
-            }
+            print("ℹ️ User avatarURL from Firestore: \(avatarURL)")
             
             completion(.success(user))
         }
@@ -504,110 +498,139 @@ extension FirebaseService {
     }
 }
 
+
+// 在 FirebaseService.swift 中添加这些扩展方法
+
+// MARK: - Firebase Storage 头像管理
 extension FirebaseService {
     
-    // 上传用户头像
-    // 上传用户头像
-    // 替换现有的 uploadUserAvatar 方法
-    // 在 FirebaseService.swift 中修复 uploadUserAvatar 方法
-    func uploadUserAvatar(userId: String, imageData: Data, completion: @escaping (Result<Void, Error>) -> Void) {
-        // 压缩图片
-        guard let image = UIImage(data: imageData),
-              let compressedData = image.jpegData(compressionQuality: 0.5) else { // 降低质量减少大小
-            completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Image compression failed"])))
-            return
-        }
+    // 上传用户头像到 Firebase Storage
+    func uploadUserAvatarToStorage(userId: String, imageData: Data, completion: @escaping (Result<URL, Error>) -> Void) {
+        // 创建存储引用
+        let storageRef = Storage.storage().reference()
+        let avatarRef = storageRef.child("avatars/\(userId).jpg")
         
-        // 检查图片大小，Firestore 有 1MB 限制
-        if compressedData.count > 900000 { // 900KB
-            completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Image too large. Please choose a smaller image."])))
-            return
-        }
+        // 创建图片元数据
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
         
-        // 将图片数据转换为 Base64 字符串
-        let base64String = compressedData.base64EncodedString()
+        print("🔄 Starting avatar upload to Firebase Storage for user: \(userId)")
+        print("📊 Image data size: \(imageData.count) bytes")
         
-        print("Starting avatar upload to Firestore for user: \(userId)")
-        print("Avatar data size: \(compressedData.count) bytes, Base64 length: \(base64String.count)")
-        
-        // 直接更新 Firestore 文档
-        db.collection("users").document(userId).updateData([
-            "avatar": base64String,
-            "lastUpdated": Timestamp(date: Date())
-        ]) { error in
+        // 上传到 Storage
+        avatarRef.putData(imageData, metadata: metadata) { metadata, error in
             if let error = error {
-                print("❌ Avatar upload to Firestore failed: \(error)")
+                print("❌ Avatar upload to Storage failed: \(error)")
                 completion(.failure(error))
-            } else {
-                print("✅ Avatar successfully uploaded to Firestore")
-                // 验证上传是否成功
-                self.verifyAvatarUpload(userId: userId) { success in
-                    if success {
-                        completion(.success(()))
-                    } else {
-                        completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Avatar upload verification failed"])))
+                return
+            }
+            
+            print("✅ Avatar successfully uploaded to Storage")
+            
+            // 获取下载 URL
+            avatarRef.downloadURL { url, error in
+                if let error = error {
+                    print("❌ Failed to get download URL: \(error)")
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let downloadURL = url else {
+                    completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get download URL"])))
+                    return
+                }
+                
+                print("✅ Successfully got download URL: \(downloadURL.absoluteString)")
+                
+                // 更新 Firestore 中的头像 URL
+                self.updateUserAvatarURL(userId: userId, avatarURL: downloadURL.absoluteString) { result in
+                    switch result {
+                    case .success:
+                        completion(.success(downloadURL))
+                    case .failure(let error):
+                        completion(.failure(error))
                     }
                 }
             }
         }
     }
-
-    // 添加验证方法
-    private func verifyAvatarUpload(userId: String, completion: @escaping (Bool) -> Void) {
-        db.collection("users").document(userId).getDocument { document, error in
-            if let document = document, document.exists,
-               let data = document.data(),
-               let avatar = data["avatar"] as? String,
-               !avatar.isEmpty {
-                print("✅ Avatar upload verified successfully")
-                completion(true)
+    
+    // 从 Firebase Storage 下载用户头像
+    func downloadUserAvatarFromStorage(userId: String, completion: @escaping (Data?) -> Void) {
+        let storageRef = Storage.storage().reference()
+        let avatarRef = storageRef.child("avatars/\(userId).jpg")
+        
+        // 设置最大下载大小（例如 10MB）
+        let maxSize: Int64 = 10 * 1024 * 1024
+        
+        avatarRef.getData(maxSize: maxSize) { data, error in
+            if let error = error {
+                print("❌ Failed to download avatar from Storage: \(error)")
+                completion(nil)
+                return
+            }
+            
+            if let data = data {
+                print("✅ Successfully downloaded avatar from Storage, size: \(data.count) bytes")
+                completion(data)
             } else {
-                print("❌ Avatar upload verification failed")
-                completion(false)
+                print("ℹ️ No avatar data found in Storage for user: \(userId)")
+                completion(nil)
             }
         }
     }
     
-    // 更新用户头像 URL 到 Firestore
+    // 删除 Firebase Storage 中的用户头像
+    func deleteUserAvatarFromStorage(userId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let storageRef = Storage.storage().reference()
+        let avatarRef = storageRef.child("avatars/\(userId).jpg")
+        
+        avatarRef.delete { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                // 同时清除 Firestore 中的头像 URL
+                self.db.collection("users").document(userId).updateData([
+                    "avatarURL": "",
+                    "lastUpdated": Timestamp(date: Date())
+                ]) { error in
+                    if let error = error {
+                        completion(.failure(error))
+                    } else {
+                        completion(.success(()))
+                    }
+                }
+            }
+        }
+    }
+    
+    // 更新用户头像 URL 到 Firestore（私有方法）
     private func updateUserAvatarURL(userId: String, avatarURL: String, completion: @escaping (Result<Void, Error>) -> Void) {
         db.collection("users").document(userId).updateData([
             "avatarURL": avatarURL,
             "lastUpdated": Timestamp(date: Date())
         ]) { error in
             if let error = error {
+                print("❌ Failed to update avatar URL in Firestore: \(error)")
                 completion(.failure(error))
             } else {
+                print("✅ Successfully updated avatar URL in Firestore")
                 completion(.success(()))
             }
         }
     }
     
-    
-    
-    // 获取用户头像数据（包含缓存逻辑）
-    // 替换现有的 getUserAvatar 方法
-    func getUserAvatar(userId: String, completion: @escaping (Data?) -> Void) {
+    // 获取用户头像 URL（从 Firestore）
+    func getUserAvatarURL(userId: String, completion: @escaping (String?) -> Void) {
         db.collection("users").document(userId).getDocument { document, error in
             guard let document = document, document.exists,
                   let data = document.data() else {
-                print("No user document found for: \(userId)")
                 completion(nil)
                 return
             }
             
-            // 从 Firestore 直接获取 Base64 编码的头像数据
-            if let base64String = data["avatar"] as? String,
-               let imageData = Data(base64Encoded: base64String) {
-                print("Successfully retrieved avatar from Firestore for user: \(userId)")
-                completion(imageData)
-            } else {
-                print("No avatar data found in Firestore for user: \(userId)")
-                completion(nil)
-            }
+            let avatarURL = data["avatarURL"] as? String
+            completion(avatarURL)
         }
     }
-    
-    
-
-
 }
