@@ -198,16 +198,24 @@ struct PublishPostView: View {
         
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // 准备图片数据
+        let imageData = selectedImage?.jpegData(compressionQuality: 0.7)
+        
         // 发布到 Firebase
         FirebaseService.shared.publishPost(
             title: trimmedTitle,
             content: trimmedContent,
-            imageData: selectedImage?.jpegData(compressionQuality: 0.8),
+            imageData: imageData, // 传递图片数据
             author: user
         ) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let post):
+                    // 如果本地有图片数据，也保存到本地（可选）
+                    if let imageData = imageData {
+                        post.postImage = imageData
+                    }
+                    
                     // 同时保存到本地数据库
                     self.modelContext.insert(post)
                     user.posts.append(post)

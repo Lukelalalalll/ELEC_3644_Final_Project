@@ -8,6 +8,83 @@
 import SwiftUI
 import SwiftData
 
+
+struct FullScreenImageView: View {
+    let image: UIImage
+    @Binding var isPresented: Bool  // 改为绑定状态
+    @State private var scale: CGFloat = 1.0
+    
+    var body: some View {
+        Color.black
+            .ignoresSafeArea()
+            .overlay(
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .scaleEffect(scale)
+                    .animation(.easeInOut(duration: 0.2), value: scale)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                scale = min(max(value, 1.0), 4.0)
+                            }
+                            .onEnded { _ in
+                                if scale < 1.0 {
+                                    withAnimation {
+                                        scale = 1.0
+                                    }
+                                }
+                            }
+                    )
+                    .gesture(
+                        TapGesture(count: 2)
+                            .onEnded {
+                                withAnimation {
+                                    scale = scale > 1.0 ? 1.0 : 2.0
+                                }
+                            }
+                    )
+                    .onTapGesture {
+                        if scale == 1.0 {
+                            isPresented = false  // 使用绑定状态
+                        } else {
+                            withAnimation {
+                                scale = 1.0
+                            }
+                        }
+                    }
+            )
+            .overlay(
+                VStack {
+                    HStack {
+                        Button {
+                            isPresented = false  // 使用绑定状态
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title)
+                                .foregroundColor(.white)
+                                .padding()
+                                .background(Circle().fill(Color.black.opacity(0.3)))
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, 50)
+                    .padding(.leading, 16)
+                    Spacer()
+                }
+            )
+            .statusBar(hidden: true)
+            .onAppear {
+                print("FullScreenImageView appeared - overlay version")
+                DispatchQueue.main.async {
+                    self.scale = 1.0
+                }
+            }
+    }
+}
+
+
+
 struct PostDetailView: View {
     let post: Post
     @Environment(\.modelContext) private var modelContext
@@ -22,6 +99,12 @@ struct PostDetailView: View {
     @State private var comments: [PostComment] = []
     @State private var isAddingComment = false
     @State private var isRefreshing = false
+    
+    
+    
+    // 添加全屏图片预览状态
+    @State private var showingFullScreenImage = false
+    @State private var selectedImage: UIImage? = nil
     
     init(post: Post) {
         self.post = post
@@ -104,6 +187,7 @@ struct PostDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     
                     // Post Image
+
                     if let imageData = post.postImage,
                        let uiImage = UIImage(data: imageData) {
                         Image(uiImage: uiImage)
@@ -111,6 +195,13 @@ struct PostDetailView: View {
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
                             .cornerRadius(30)
+                            .onTapGesture {
+                                // 确保在主线程执行
+                                DispatchQueue.main.async {
+                                    selectedImage = uiImage
+                                    showingFullScreenImage = true
+                                }
+                            }
                     }
                     
                     // Stats
@@ -306,6 +397,18 @@ struct PostDetailView: View {
         } message: {
             Text("Are you sure you want to delete this post? This action cannot be undone.")
         }
+        .overlay(
+            Group {
+                if showingFullScreenImage, let image = selectedImage {
+                    FullScreenImageView(
+                        image: image,
+                        isPresented: $showingFullScreenImage  // 传递绑定状态
+                    )
+                    .transition(.opacity)
+                    .zIndex(1000)
+                }
+            }
+        )
     }
     
     private func refreshComments() async {
