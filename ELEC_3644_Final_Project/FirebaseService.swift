@@ -8,6 +8,7 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
+import SwiftData
 
 class FirebaseService: ObservableObject {
     static let shared = FirebaseService()
@@ -34,7 +35,8 @@ class FirebaseService: ObservableObject {
                 "email": email,
                 "gender": gender,
                 "avatarURL": "", // 添加空的 avatar 字段
-                "joinDate": Timestamp(date: Date())
+                "joinDate": Timestamp(date: Date()),
+                "enrolledCourseIds": []
             ]
             
             self.db.collection("users").document(user.uid).setData(userData) { error in
@@ -47,7 +49,8 @@ class FirebaseService: ObservableObject {
                         username: username,
                         password: "", // 不在本地存储密码
                         email: email,
-                        gender: gender
+                        gender: gender,
+                        enrolledCourseIds: []
                     )
                     completion(.success(localUser))
                 }
@@ -94,13 +97,14 @@ class FirebaseService: ObservableObject {
             let email = data["email"] as? String ?? ""
             let gender = data["gender"] as? String ?? "Male"
             let avatarURL = data["avatarURL"] as? String ?? "" // 获取 Storage URL
-            
+            let enrolledCourseIds = data["enrolledCourseIds"] as? [String] ?? []
             let user = User(
                 userId: userId,
                 username: username,
                 password: "", // 不在本地存储密码
                 email: email,
-                gender: gender
+                gender: gender,
+                enrolledCourseIds: enrolledCourseIds
             )
             
             print("ℹ️ User avatarURL from Firestore: \(avatarURL)")
@@ -144,6 +148,7 @@ class FirebaseService: ObservableObject {
                 switch result {
                 case .success(let user):
                     print("Successfully loaded user data: \(user.username)")
+                    print("Enrolled courses: \(user.enrolledCourseIds)")
                     completion(user)
                 case .failure(let error):
                     print("Failed to load user data from Firestore: \(error)")
@@ -829,5 +834,248 @@ extension FirebaseService {
     func getPostData(postId: String) async throws -> [String: Any]? {
         let document = try await db.collection("posts").document(postId).getDocument()
         return document.data()
+    }
+}
+
+
+
+
+// MARK: - 课程相关方法
+extension FirebaseService {
+    
+    // 修改后的 addCourseToUser 方法
+//    func addCourseToUser(userId: String, courseId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+//        let userRef = db.collection("users").document(userId)
+//        
+//        // 先检查文档是否存在以及是否有 enrolledCourseIds 字段
+//        userRef.getDocument { snapshot, error in
+//            if let error = error {
+//                completion(.failure(error))
+//                return
+//            }
+//            
+//            if let snapshot = snapshot, snapshot.exists {
+//                // 文档存在，检查是否有 enrolledCourseIds 字段
+//                if let existingCourseIds = snapshot.data()?["enrolledCourseIds"] as? [String] {
+//                    // 字段存在，使用 arrayUnion
+//                    userRef.updateData([
+//                        "enrolledCourseIds": FieldValue.arrayUnion([courseId])
+//                    ]) { error in
+//                        if let error = error {
+//                            completion(.failure(error))
+//                        } else {
+//                            completion(.success(()))
+//                        }
+//                    }
+//                } else {
+//                    // 字段不存在，直接设置数组
+//                    userRef.updateData([
+//                        "enrolledCourseIds": [courseId]
+//                    ]) { error in
+//                        if let error = error {
+//                            completion(.failure(error))
+//                        } else {
+//                            completion(.success(()))
+//                        }
+//                    }
+//                }
+//            } else {
+//                // 文档不存在（理论上不应该发生）
+//                completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "User document not found"])))
+//            }
+//        }
+//    }
+    
+    
+    func addCourseToUser(userId: String, courseId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        let userRef = db.collection("users").document(userId)
+        
+        print("🔄 开始更新用户课程: userId=\(userId), courseId=\(courseId)")
+        
+        // 先检查文档是否存在以及是否有 enrolledCourseIds 字段
+        userRef.getDocument { snapshot, error in
+            if let error = error {
+                print("❌ 获取用户文档失败: \(error)")
+                completion(.failure(error))
+                return
+            }
+            
+            if let snapshot = snapshot, snapshot.exists {
+                print("✅ 用户文档存在")
+                
+                // 文档存在，检查是否有 enrolledCourseIds 字段
+                if let existingCourseIds = snapshot.data()?["enrolledCourseIds"] as? [String] {
+                    print("ℹ️ 已有 enrolledCourseIds: \(existingCourseIds)")
+                    // 字段存在，使用 arrayUnion
+                    userRef.updateData([
+                        "enrolledCourseIds": FieldValue.arrayUnion([courseId])
+                    ]) { error in
+                        if let error = error {
+                            print("❌ 更新 enrolledCourseIds 失败: \(error)")
+                            completion(.failure(error))
+                        } else {
+                            print("✅ 成功添加课程到 enrolledCourseIds")
+                            completion(.success(()))
+                        }
+                    }
+                } else {
+                    print("ℹ️ enrolledCourseIds 字段不存在，创建新数组")
+                    // 字段不存在，直接设置数组
+                    userRef.updateData([
+                        "enrolledCourseIds": [courseId]
+                    ]) { error in
+                        if let error = error {
+                            print("❌ 创建 enrolledCourseIds 失败: \(error)")
+                            completion(.failure(error))
+                        } else {
+                            print("✅ 成功创建 enrolledCourseIds")
+                            completion(.success(()))
+                        }
+                    }
+                }
+            } else {
+                print("❌ 用户文档不存在")
+                // 文档不存在（理论上不应该发生）
+                completion(.failure(NSError(domain: "FirebaseService", code: -1, userInfo: [NSLocalizedDescriptionKey: "User document not found"])))
+            }
+        }
+    }
+    
+    // （可选）获取用户已选课程 ID 列表
+    func fetchEnrolledCourseIds(for userId: String, completion: @escaping (Result<[String], Error>) -> Void) {
+        db.collection("users").document(userId).getDocument { snapshot, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            let courseIds = snapshot?.data()?["enrolledCourseIds"] as? [String] ?? []
+            completion(.success(courseIds))
+        }
+    }
+}
+
+
+
+// MARK: - 用户课程同步核心方法（必须加！）
+extension FirebaseService {
+    
+    /// 登录后调用：获取用户资料 + 同步已选课程到本地 SwiftData
+    /// 登录后调用：获取用户资料 + 同步已选课程到本地 SwiftData
+    func getUserDataAndSyncCourses(userId: String,
+                                   modelContext: ModelContext,
+                                   completion: @escaping (Result<User, Error>) -> Void) {
+        
+        let userRef = db.collection("users").document(userId)
+        
+        userRef.getDocument { snapshot, error in
+            if let error = error {
+                completion(.failure(error))
+                return
+            }
+            
+            guard let data = snapshot?.data(), snapshot?.exists == true else {
+                completion(.failure(NSError(domain: "Firebase", code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "用户资料不存在"])))
+                return
+            }
+            
+            // 1. 创建本地 User 对象
+            let username = data["username"] as? String ?? "Unknown"
+            let email = data["email"] as? String ?? ""
+            let gender = data["gender"] as? String ?? "Male"
+            let avatarURL = data["avatarURL"] as? String ?? ""
+            let enrolledCourseIds = data["enrolledCourseIds"] as? [String] ?? [] // 新增这行！
+            
+            let user = User(
+                userId: userId,
+                username: username,
+                password: "",
+                email: email,
+                gender: gender,
+                enrolledCourseIds: enrolledCourseIds  // 新增这行！
+            )
+            modelContext.insert(user)
+            
+            // 2. 读取 Firebase 中的 enrolledCourseIds (已经在上面的初始化中设置了)
+            print("ℹ️ 从 Firebase 加载的 enrolledCourseIds: \(enrolledCourseIds)")
+            
+            // 3. 自动恢复完整课程到 SwiftData（只添加还不存在的）
+            let allSampleCourses = createSampleCourses()
+            
+            for courseId in enrolledCourseIds {
+                // 如果本地还没这门课，才深拷贝一份加进去
+                if user.courses.contains(where: { $0.courseId == courseId }) {
+                    continue
+                }
+                
+                if let template = allSampleCourses.first(where: { $0.courseId == courseId }) {
+                    let copiedCourse = self.deepCopyCourse(template)
+                    user.courses.append(copiedCourse)
+                    modelContext.insert(copiedCourse)
+                }
+            }
+            
+            // 保存到本地 SwiftData
+            do {
+                try modelContext.save()
+                print("已成功同步 \(enrolledCourseIds.count) 门课程到本地")
+            } catch {
+                print("同步课程到 SwiftData 失败：\(error)")
+            }
+            
+            completion(.success(user))
+        }
+    }
+    
+    /// 工具方法：深拷贝课程（避免所有用户共享同一实例）
+    private func deepCopyCourse(_ course: Course) -> Course {
+        let newCourse = Course(
+            courseId: course.courseId,
+            courseName: course.courseName,
+            professor: course.professor,
+            courseCode: course.courseCode,
+            credits: course.credits,
+            courseDescription: course.courseDescription
+        )
+        
+        // 复制上课时间
+        for ct in course.classTimes {
+            let newCT = ClassTime(
+                dayOfWeek: ct.dayOfWeek,
+                startTime: ct.startTime,
+                endTime: ct.endTime,
+                location: ct.location,
+                course: newCourse
+            )
+            newCourse.classTimes.append(newCT)
+        }
+        
+        // 复制作业
+        for hw in course.homeworkList {
+            let newHW = Homework(
+                homeworkId: hw.homeworkId,
+                title: hw.title,
+                dueDate: hw.dueDate,
+                course: newCourse
+            )
+            newCourse.homeworkList.append(newHW)
+        }
+        
+        return newCourse
+    }
+    
+    
+    
+    // 检查用户是否已选某门课
+    func checkIfUserHasCourse(userId: String, courseId: String, completion: @escaping (Bool) -> Void) {
+        fetchEnrolledCourseIds(for: userId) { result in
+            switch result {
+            case .success(let courseIds):
+                completion(courseIds.contains(courseId))
+            case .failure:
+                completion(false)
+            }
+        }
     }
 }
