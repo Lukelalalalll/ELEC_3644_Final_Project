@@ -361,6 +361,8 @@ struct PostDetailView: View {
                         .padding(.horizontal, 16)
                     }
                 }
+                Spacer()
+                    .frame(height: 50)
             }
             .padding(.vertical, 8)
         }
