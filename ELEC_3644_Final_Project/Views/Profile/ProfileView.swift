@@ -127,13 +127,10 @@ struct ProfileView: View {
                     user.updateAvatar(imageData)
                     self.avatarImage = image
                     
-                    // 保存到本地数据库
                     self.saveUserToLocalStorage(user: user)
                     
-                    // 显示成功消息
                     self.errorMessage = "Avatar updated successfully!"
                     
-                    // 验证头像是否真的保存了
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         self.verifyAvatarStorage(user: user)
                     }
@@ -142,7 +139,6 @@ struct ProfileView: View {
                     print("❌ Failed to upload avatar to Storage: \(error)")
                     self.errorMessage = "Failed to upload avatar: \(error.localizedDescription)"
                     
-                    // 即使上传失败，也暂时显示选择的图片（本地缓存）
                     user.updateAvatar(imageData)
                     self.avatarImage = image
                     self.saveUserToLocalStorage(user: user)
@@ -285,6 +281,8 @@ struct ProfileView: View {
             VStack(spacing: 20) {
                 headerCard(user: user)
                 
+                myCoursesButton
+                
                 logoutButton
                 
                 personalInfoCard(user: user)
@@ -397,19 +395,14 @@ struct ProfileView: View {
         print("Local avatar data: \(user.avatar != nil ? "Exists (\(user.avatar?.count ?? 0) bytes)" : "Nil")")
         print("Current avatarImage: \(avatarImage != nil ? "Exists" : "Nil")")
         
-        // 检查 Firestore 中的 avatarURL
         FirebaseService.shared.getUserAvatarURL(userId: user.userId) { avatarURL in
             print("Firestore avatarURL: \(avatarURL ?? "Nil")")
             
-            // 检查 Storage 中是否有文件
             FirebaseService.shared.downloadUserAvatarFromStorage(userId: user.userId) { data in
                 print("Storage avatar data: \(data != nil ? "Exists (\(data?.count ?? 0) bytes)" : "Nil")")
             }
         }
     }
-    
-    
-    
     
     
     private func personalInfoCard(user: User) -> some View {
@@ -517,6 +510,37 @@ struct ProfileView: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                    )
+            )
+        }
+        .padding(.horizontal)
+        .buttonStyle(ScaleButtonStyle())
+    }
+    
+    private var myCoursesButton: some View {
+        NavigationLink(destination: MyCoursesView()) {
+            HStack(spacing: 12) {
+                Image(systemName: "book.fill")
+                    .font(.headline)
+                    .foregroundColor(.blue)
+                
+                Text("My Courses")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.blue)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.blue.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
                     )
             )
         }
