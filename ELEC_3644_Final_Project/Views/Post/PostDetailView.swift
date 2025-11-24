@@ -109,7 +109,12 @@ struct PostDetailView: View {
     init(post: Post) {
         self.post = post
         self._likeCount = State(initialValue: post.likes)
-        self._liked = State(initialValue: post.likes > 0)
+        
+        // 修复：根据当前用户是否在 likedByUsers 中来初始化点赞状态
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let isLiked = currentUserId != nil && post.likedByUsers.contains { $0.userId == currentUserId }
+        self._liked = State(initialValue: isLiked)
+        
         self._comments = State(initialValue: post.comments.sorted { $0.commentDate > $1.commentDate })
     }
     
@@ -135,6 +140,66 @@ struct PostDetailView: View {
             return false
         }
         return currentUser.userId == postAuthor.userId
+    }
+    
+    private func getUserAsync(userId: String) async -> User? {
+        await withCheckedContinuation { continuation in
+            FirebaseService.shared.getUserData(userId: userId) { result in
+                switch result {
+                case .success(let user):
+                    continuation.resume(returning: user)
+                case .failure:
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+    
+    
+    private func refreshLikeStatus() async {
+        do {
+            // 用新方法获取数据
+            if let data = try await FirebaseService.shared.getPostData(postId: post.postId) {
+                let likesFromData = data["likes"] as? Int ?? 0
+                let likedByUserIds = data["likedByUserIds"] as? [String] ?? []
+                
+                await MainActor.run {
+                    post.likes = likesFromData
+                    post.likedByUsers.removeAll()
+                }
+                
+                // 并发加载所有点赞用户（即使部分失败，likes 仍正确）
+                let users = await withTaskGroup(of: User?.self) { group in
+                    for userId in likedByUserIds {
+                        group.addTask {
+                            await self.getUserAsync(userId: userId)
+                        }
+                    }
+                    
+                    var collectedUsers: [User] = []
+                    for await user in group {
+                        if let user = user {
+                            collectedUsers.append(user)
+                        }
+                    }
+                    return collectedUsers
+                }
+                
+                await MainActor.run {
+                    post.likedByUsers.append(contentsOf: users)
+                    
+                    // 更新 State（liked 用 ID 列表判断，更可靠）
+                    likeCount = post.likes
+                    let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+                    liked = likedByUserIds.contains(currentUserId)
+                    
+                    // 保存本地模型
+                    try? modelContext.save()
+                }
+            }
+        } catch {
+            print("刷新点赞状态失败: \(error)")
+        }
     }
     
     var body: some View {
@@ -228,32 +293,7 @@ struct PostDetailView: View {
                     
                     HStack(spacing: 12) {
                         Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                liked.toggle()
-                                likeCount += liked ? 1 : -1
-                                post.likes = likeCount
-                                
-                                // 同步到 Firebase
-                                FirebaseService.shared.updatePostLikes(postId: post.postId, likes: likeCount) { result in
-                                    DispatchQueue.main.async {
-                                        switch result {
-                                        case .success:
-                                            // 保存到本地
-                                            do {
-                                                try modelContext.save()
-                                            } catch {
-                                                print("Failed to save likes locally: \(error)")
-                                            }
-                                        case .failure(let error):
-                                            print("Failed to update likes in Firebase: \(error)")
-                                            // 回滚点赞操作
-                                            liked.toggle()
-                                            likeCount += liked ? -1 : 1
-                                            post.likes = likeCount
-                                        }
-                                    }
-                                }
-                            }
+                            handlePostLike()
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: liked ? "heart.fill" : "heart")
@@ -329,7 +369,7 @@ struct PostDetailView: View {
                     } else {
                         LazyVStack(spacing: 12) {
                             ForEach(comments) { comment in
-                                CommentRow(comment: comment, onDelete: {
+                                CommentRow(comment: comment, currentUser: currentUser, onDelete: {
                                     deleteComment(comment)
                                 })
                             }
@@ -365,6 +405,7 @@ struct PostDetailView: View {
         .onAppear {
             Task {
                 await refreshComments()
+                await refreshLikeStatus()
             }
         }
         .alert("Delete Post", isPresented: $showingDeleteAlert) {
@@ -389,6 +430,51 @@ struct PostDetailView: View {
         )
     }
     
+    private func handlePostLike() {
+        guard let user = currentUser else {
+            errorMessage = "Please login first"
+            showError = true
+            return
+        }
+        
+        let wasLiked = liked  // 记录旧状态用于回滚
+        
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+            if liked {
+                post.unlike(by: user)
+                liked = false
+            } else {
+                post.like(by: user)
+                liked = true
+            }
+            likeCount = post.likes
+        }
+        
+        // 同步到 Firebase
+        // 在 handlePostLike() 的同步到 Firebase 部分
+        FirebaseService.shared.updatePostLikeStatus(postId: post.postId, userId: user.userId, isLiking: liked) { result in
+            DispatchQueue.main.async {
+                if case .failure(let error) = result {
+                    errorMessage = "Failed to update likes: \(error.localizedDescription)"
+                    showError = true
+                    
+                    // 回滚
+                    let wasLiked = !liked  // 注意反转，因为 liked 已 toggle
+                    if wasLiked {
+                        post.like(by: user)
+                    } else {
+                        post.unlike(by: user)
+                    }
+                    liked = wasLiked
+                    likeCount = post.likes
+                } else {
+                    try? modelContext.save()
+                }
+            }
+        }
+    }
+    
+    
     private func refreshComments() async {
         await MainActor.run {
             isRefreshing = true
@@ -401,7 +487,11 @@ struct PostDetailView: View {
             // 更新 @State 变量
             self.comments = post.comments.sorted { $0.commentDate > $1.commentDate }
             self.likeCount = post.likes
-            self.liked = post.likes > 0
+            
+            // 修复：根据当前用户是否在 likedByUsers 中来更新点赞状态
+            let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+            self.liked = currentUserId != nil && post.likedByUsers.contains { $0.userId == currentUserId }
+            
             self.isRefreshing = false
             print("刷新完成，评论数量: \(self.comments.count)")
         }
@@ -541,6 +631,7 @@ struct PostDetailView: View {
 // MARK: - Comment Row (保持不变)
 struct CommentRow: View {
     let comment: PostComment
+    let currentUser: User?
     let onDelete: () -> Void
     @State private var liked = false
     @State private var showingDeleteAlert = false
@@ -560,6 +651,42 @@ struct CommentRow: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: comment.commentDate)
+    }
+    
+    
+    private func handleCommentLike(comment: PostComment) {
+        guard let currentUser = currentUser else {
+            print("用户未登录")
+            return
+        }
+        
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
+            // 使用当前的 liked 状态，而不是重新计算
+            if liked {
+                comment.unlike(by: currentUser)
+                liked = false
+            } else {
+                comment.like(by: currentUser)
+                liked = true
+            }
+            
+            // 同步到 Firebase
+            FirebaseService.shared.updateCommentLikes(commentId: comment.commentId, likes: comment.likes) { result in
+                DispatchQueue.main.async {
+                    if case .failure(let error) = result {
+                        print("Failed to update comment likes in Firebase: \(error)")
+                        // 回滚点赞操作
+                        if liked {
+                            comment.unlike(by: currentUser)
+                            liked = false
+                        } else {
+                            comment.like(by: currentUser)
+                            liked = true
+                        }
+                    }
+                }
+            }
+        }
     }
     
     var body: some View {
@@ -589,30 +716,7 @@ struct CommentRow: View {
                 HStack(spacing: 16) {
                     // 评论点赞功能
                     Button {
-                        withAnimation(.spring(response: 0.2, dampingFraction: 0.6)) {
-                            liked.toggle()
-                            if liked {
-                                comment.like()
-                            } else {
-                                comment.unlike()
-                            }
-                            
-                            // 同步到 Firebase
-                            FirebaseService.shared.updateCommentLikes(commentId: comment.commentId, likes: comment.likes) { result in
-                                DispatchQueue.main.async {
-                                    if case .failure(let error) = result {
-                                        print("Failed to update comment likes in Firebase: \(error)")
-                                        // 回滚点赞操作
-                                        liked.toggle()
-                                        if liked {
-                                            comment.unlike()
-                                        } else {
-                                            comment.like()
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        handleCommentLike(comment: comment)
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: liked ? "heart.fill" : "heart")
@@ -663,7 +767,8 @@ struct CommentRow: View {
         }
         .onAppear {
             // 初始化点赞状态
-            liked = comment.likes > 0
+            let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+            liked = currentUserId != nil && comment.likedByUsers.contains { $0.userId == currentUserId }
         }
     }
 }

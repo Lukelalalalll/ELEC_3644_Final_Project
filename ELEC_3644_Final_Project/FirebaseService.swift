@@ -12,7 +12,7 @@ import FirebaseStorage
 class FirebaseService: ObservableObject {
     static let shared = FirebaseService()
     
-    private let db = Firestore.firestore()
+    let db = Firestore.firestore()
     
     // 注册用户
     func registerUser(username: String, email: String, password: String, gender: String, completion: @escaping (Result<User, Error>) -> Void) {
@@ -77,7 +77,7 @@ class FirebaseService: ObservableObject {
     
     // 获取用户资料
     // 在 FirebaseService.swift 中修复 getUserData 方法
-    private func getUserData(userId: String, completion: @escaping (Result<User, Error>) -> Void) {
+    func getUserData(userId: String, completion: @escaping (Result<User, Error>) -> Void) {
         db.collection("users").document(userId).getDocument { document, error in
             if let error = error {
                 completion(.failure(error))
@@ -206,7 +206,8 @@ extension FirebaseService {
             "likes": 0,
             "postDate": Timestamp(date: Date()),
             "authorId": author.userId,
-            "authorUsername": author.username
+            "authorUsername": author.username,
+            "likedByUserIds": []
         ]
         
         // 如果有图片URL，添加到数据中
@@ -274,6 +275,7 @@ extension FirebaseService {
                     let likes = data["likes"] as? Int ?? 0
                     let authorId = data["authorId"] as? String ?? ""
                     let imageURL = data["imageURL"] as? String // 获取图片URL
+                    let likedByUserIds = data["likedByUserIds"] as? [String] ?? []
                     
                     // 首先获取作者信息
                     self.getUserData(userId: authorId) { result in
@@ -290,6 +292,15 @@ extension FirebaseService {
                             
                             if let timestamp = data["postDate"] as? Timestamp {
                                 post.postDate = timestamp.dateValue()
+                            }
+                            
+                            // 新增：重建 likedByUsers
+                            for userId in likedByUserIds {
+                                self.getUserData(userId: userId) { userResult in
+                                    if case .success(let likedUser) = userResult {
+                                        post.likedByUsers.append(likedUser)
+                                    }
+                                }
                             }
                             
                             // 如果有图片URL，下载图片
@@ -373,14 +384,30 @@ extension FirebaseService {
     }
     
     // 更新帖子点赞数
-    func updatePostLikes(postId: String, likes: Int, completion: @escaping (Result<Void, Error>) -> Void) {
-        db.collection("posts").document(postId).updateData([
-            "likes": likes
-        ]) { error in
-            if let error = error {
-                completion(.failure(error))
-            } else {
-                completion(.success(()))
+    func updatePostLikeStatus(postId: String, userId: String, isLiking: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
+        let postRef = db.collection("posts").document(postId)
+        
+        if isLiking {
+            postRef.updateData([
+                "likes": FieldValue.increment(Int64(1)),
+                "likedByUserIds": FieldValue.arrayUnion([userId])
+            ]) { error in
+                if let error = error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(()))
+                }
+            }
+        } else {
+            postRef.updateData([
+                "likes": FieldValue.increment(Int64(-1)),
+                "likedByUserIds": FieldValue.arrayRemove([userId])
+            ]) { error in
+                if let error = error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(()))
+                }
             }
         }
     }
@@ -795,5 +822,12 @@ extension FirebaseService {
                 completion(.success(()))
             }
         }
+    }
+    
+    
+    // 在 FirebaseService.swift 的 extension 中添加
+    func getPostData(postId: String) async throws -> [String: Any]? {
+        let document = try await db.collection("posts").document(postId).getDocument()
+        return document.data()
     }
 }
