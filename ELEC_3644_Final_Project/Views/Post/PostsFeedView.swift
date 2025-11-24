@@ -116,24 +116,10 @@ struct PostsFeedView: View {
                     updateExistingPost(existingPost, with: firebasePost)
                 } else {
                     modelContext.insert(firebasePost)
-                    
-                    if let firebaseAuthor = firebasePost.author {
-                        linkOrCreateUser(firebaseAuthor)
-                        firebasePost.author = getLocalUser(by: firebaseAuthor.userId) ?? firebaseAuthor
-                    }
-                    
-                    for comment in firebasePost.comments {
-                        modelContext.insert(comment)
-                        comment.post = firebasePost
-                        
-                        if let commentAuthor = comment.author {
-                            linkOrCreateUser(commentAuthor)
-                            comment.author = getLocalUser(by: commentAuthor.userId) ?? commentAuthor
-                        }
-                    }
                 }
             }
             
+            // 删除本地不存在于 Firebase 的帖子
             let firebasePostIds = Set(firebasePosts.map { $0.postId })
             for localPost in localPosts {
                 if !firebasePostIds.contains(localPost.postId) {
@@ -142,186 +128,113 @@ struct PostsFeedView: View {
             }
             
             try modelContext.save()
-            
-            print("本地数据库更新完成，现有 \(firebasePosts.count) 个帖子")
-            
         } catch {
             print("更新本地帖子失败: \(error)")
         }
     }
     
-    @MainActor
-    private func updateExistingPost(_ existingPost: Post, with firebasePost: Post) {
-        // 基本信息更新
-        existingPost.title = firebasePost.title
-        existingPost.content = firebasePost.content
-        existingPost.likes = firebasePost.likes
-        existingPost.postDate = firebasePost.postDate
-        existingPost.postImage = firebasePost.postImage
-        
-        if let firebaseAuthor = firebasePost.author {
-            linkOrCreateUser(firebaseAuthor)
-            existingPost.author = getLocalUser(by: firebaseAuthor.userId) ?? firebaseAuthor
-        }
-        
-        syncAllComments(for: existingPost, from: firebasePost.comments)
+    private func updateExistingPost(_ existing: Post, with firebase: Post) {
+        existing.title = firebase.title
+        existing.content = firebase.content
+        existing.postImage = firebase.postImage
+        existing.likes = firebase.likes
+        existing.postDate = firebase.postDate
+        existing.author = firebase.author
+        existing.comments = firebase.comments
+        existing.likedByUsers = firebase.likedByUsers
     }
     
-    // MARK: - 用户管理辅助方法
-    @MainActor
-    private func linkOrCreateUser(_ firebaseUser: User) {
-        if getLocalUser(by: firebaseUser.userId) == nil {
-            let newUser = User(
-                userId: firebaseUser.userId,
-                username: firebaseUser.username,
-                password: "", // 不存储密码
-                email: firebaseUser.email,
-                gender: firebaseUser.gender,
-                avatar: firebaseUser.avatar
-            )
-            newUser.joinDate = firebaseUser.joinDate
-            modelContext.insert(newUser)
-        } else {
-            // 用户已存在，更新信息
-            if let existingUser = getLocalUser(by: firebaseUser.userId) {
-                existingUser.username = firebaseUser.username
-                existingUser.email = firebaseUser.email
-                existingUser.gender = firebaseUser.gender
-                existingUser.avatar = firebaseUser.avatar
-            }
+    private func addSamplePosts() {
+        for mockPost in Post.mockPosts {
+            modelContext.insert(mockPost)
         }
+        try? modelContext.save()
     }
+}
+
+struct PostCell: View {
+    let post: Post
+    @Environment(\.modelContext) private var modelContext
     
-    @MainActor
-    private func getLocalUser(by userId: String) -> User? {
+    @State private var liked: Bool
+    @State private var likeCount: Int
+    
+    // 获取当前用户（类似 PostDetailView）
+    private var currentUser: User? {
+        guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
+            return nil
+        }
+        
         do {
             let existingUsers = try modelContext.fetch(FetchDescriptor<User>())
-            return existingUsers.first(where: { $0.userId == userId })
+            return existingUsers.first(where: { $0.userId == currentUserId })
         } catch {
-            print("获取本地用户失败: \(error)")
+            print("Failed to fetch current user: \(error)")
             return nil
         }
     }
     
-    // MARK: - 彻底同步评论（修复跨账号看不见评论的核心函数）
-    @MainActor
-    private func syncAllComments(for post: Post, from firebaseComments: [PostComment]) {
-        // 1. 创建映射以便快速查找
-        var localCommentMap = [String: PostComment]()
-        for comment in post.comments {
-            localCommentMap[comment.commentId] = comment
-        }
-        
-        let firebaseCommentIds = Set(firebaseComments.map { $0.commentId })
-        
-        // 2. 删除本地多余的评论
-        for localComment in post.comments {
-            if !firebaseCommentIds.contains(localComment.commentId) {
-                // 从关联关系中移除
-                post.comments.removeAll { $0.commentId == localComment.commentId }
-                if let author = localComment.author {
-                    author.postComments.removeAll { $0.commentId == localComment.commentId }
-                }
-                // 从数据库中删除
-                modelContext.delete(localComment)
-            }
-        }
-        
-        // 3. 更新或添加评论
-        for firebaseComment in firebaseComments {
-            if let existingComment = localCommentMap[firebaseComment.commentId] {
-                // 更新现有评论
-                existingComment.content = firebaseComment.content
-                existingComment.likes = firebaseComment.likes
-                existingComment.commentDate = firebaseComment.commentDate
-                
-                // 更新评论作者
-                if let fbAuthor = firebaseComment.author {
-                    linkOrCreateUser(fbAuthor)
-                    existingComment.author = getLocalUser(by: fbAuthor.userId) ?? fbAuthor
-                }
-            } else {
-                // 添加新评论
-                let newComment = PostComment(
-                    commentId: firebaseComment.commentId,
-                    content: firebaseComment.content,
-                    author: nil,
-                    post: post
-                )
-                newComment.likes = firebaseComment.likes
-                newComment.commentDate = firebaseComment.commentDate
-                
-                // 设置评论作者
-                if let fbAuthor = firebaseComment.author {
-                    linkOrCreateUser(fbAuthor)
-                    newComment.author = getLocalUser(by: fbAuthor.userId) ?? fbAuthor
-                }
-                
-                modelContext.insert(newComment)
-                post.comments.append(newComment)
-                
-                // 添加到作者的关系中
-                if let author = newComment.author {
-                    if !author.postComments.contains(where: { $0.commentId == newComment.commentId }) {
-                        author.postComments.append(newComment)
-                    }
-                }
-            }
-        }
-    }
-    
-    // 保留示例帖子作为后备
-    private func addSamplePosts() {
-        // 获取或创建示例用户
-        let sampleUser: User
-        
-        do {
-            let existingUsers = try modelContext.fetch(FetchDescriptor<User>())
-            if let existingUser = existingUsers.first(where: { $0.username == "sample_user" }) {
-                sampleUser = existingUser
-            } else {
-                sampleUser = User(
-                    userId: UUID().uuidString,
-                    username: "sample_user",
-                    password: "password",
-                    email: "sample@example.com",
-                    gender: "Male"
-                )
-                modelContext.insert(sampleUser)
-            }
-            
-            // 创建示例帖子并关联用户
-            for post in Post.mockPosts {
-                post.author = sampleUser
-                sampleUser.posts.append(post)
-                modelContext.insert(post)
-            }
-            
-            try modelContext.save()
-            print("添加了 \(Post.mockPosts.count) 个示例帖子")
-        } catch {
-            print("添加示例帖子失败: \(error)")
-        }
-    }
-    
-    // 公开刷新方法，允许外部调用
-    func refreshPostsIfNeeded() async {
-        await refreshPosts()
-    }
-}
-
-// MARK: - Post Cell
-struct PostCell: View {
-    let post: Post
-    let modelContext: ModelContext
-    @State private var liked = false
-    @State private var likeCount: Int
-    
     init(post: Post, modelContext: ModelContext) {
         self.post = post
-        self.modelContext = modelContext
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        let isLiked = currentUserId != nil && post.likedByUsers.contains { $0.userId == currentUserId }
+        self._liked = State(initialValue: isLiked)
         self._likeCount = State(initialValue: post.likes)
-        self._liked = State(initialValue: post.likes > 0)
+    }
+    
+    // 辅助：异步获取用户
+    private func getUserAsync(userId: String) async -> User? {
+        await withCheckedContinuation { continuation in
+            FirebaseService.shared.getUserData(userId: userId) { result in
+                switch result {
+                case .success(let user):
+                    continuation.resume(returning: user)
+                case .failure:
+                    continuation.resume(returning: nil)
+                }
+            }
+        }
+    }
+    
+    // 刷新点赞状态（类似 PostDetailView）
+    private func refreshLikeStatus() async {
+        do {
+            if let data = try await FirebaseService.shared.getPostData(postId: post.postId) {
+                let likesFromData = data["likes"] as? Int ?? 0
+                let likedByUserIds = data["likedByUserIds"] as? [String] ?? []
+                
+                await MainActor.run {
+                    post.likes = likesFromData
+                    post.likedByUsers.removeAll()
+                }
+                
+                // 并发加载用户
+                let users = await withTaskGroup(of: User?.self) { group in
+                    for userId in likedByUserIds {
+                        group.addTask {
+                            await self.getUserAsync(userId: userId)
+                        }
+                    }
+                    var collectedUsers: [User] = []
+                    for await user in group {
+                        if let user = user {
+                            collectedUsers.append(user)
+                        }
+                    }
+                    return collectedUsers
+                }
+                
+                await MainActor.run {
+                    post.likedByUsers.append(contentsOf: users)
+                    likeCount = post.likes
+                    let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+                    liked = likedByUserIds.contains(currentUserId)
+                    try? modelContext.save()
+                }
+            }
+        } catch {
+            print("刷新点赞状态失败: \(error)")
+        }
     }
     
     var body: some View {
@@ -330,16 +243,15 @@ struct PostCell: View {
             HStack(spacing: 12) {
                 Image(systemName: "person.circle.fill")
                     .resizable()
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .foregroundColor(.blue)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(post.author?.username ?? "Anonymous User")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(post.author?.username ?? "Anonymous")
                         .font(.headline)
-                        .fontWeight(.semibold)
                         .foregroundColor(.primary)
                     Text(post.formattedDate)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
                 
@@ -377,32 +289,26 @@ struct PostCell: View {
             // Stats and Actions
             HStack(spacing: 20) {
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                        liked.toggle()
-                        likeCount += liked ? 1 : -1
-                        post.likes = likeCount
-                        
-                        // 关键修复：立即同步到 Firebase 并保存到本地
-                        FirebaseService.shared.updatePostLikes(postId: post.postId, likes: likeCount) { result in
-                            DispatchQueue.main.async {
-                                switch result {
-                                case .success:
-                                    // 保存到本地数据库
-                                    do {
-                                        try modelContext.save()
-                                    } catch {
-                                        print("Failed to save likes locally: \(error)")
-                                    }
-                                case .failure(let error):
-                                    print("更新点赞数到 Firebase 失败: \(error)")
-                                    // 回滚点赞操作
-                                    liked.toggle()
-                                    likeCount += liked ? -1 : 1
-                                    post.likes = likeCount
-                                }
-                            }
-                        }
+                    guard let currentUser = currentUser else {
+                        print("用户未登录，无法点赞")
+                        return
                     }
+                    
+                    let wasLiked = liked  // 记录操作前状态
+                    
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        if liked {
+                            post.unlike(by: currentUser)
+                            liked = false
+                        } else {
+                            post.like(by: currentUser)
+                            liked = true
+                        }
+                        likeCount = post.likes
+                    }
+                    
+                    // 同步到 Firebase
+                    updateLikesOnServer(wasLiked: wasLiked)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: liked ? "heart.fill" : "heart")
@@ -414,6 +320,7 @@ struct PostCell: View {
                             .foregroundColor(liked ? .red : .secondary)
                     }
                 }
+                .disabled(currentUser == nil)
                 
                 HStack(spacing: 6) {
                     Image(systemName: "message")
@@ -439,8 +346,49 @@ struct PostCell: View {
             RoundedRectangle(cornerRadius: 30)
                 .stroke(Color(.systemGray5), lineWidth: 0.5)
         )
+        .onAppear {
+            Task {
+                await refreshLikeStatus()
+            }
+        }
     }
     
+    private func updateLikesOnServer(wasLiked: Bool) {
+        guard let currentUser = currentUser else { return }
+        
+        let isLiking = !wasLiked  // 因为操作后 liked = !wasLiked
+        
+        FirebaseService.shared.updatePostLikeStatus(postId: post.postId, userId: currentUser.userId, isLiking: isLiking) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    do {
+                        try modelContext.save()
+                        print("点赞状态更新成功")
+                        // 操作成功后刷新状态，确保同步
+                        Task {
+                            await refreshLikeStatus()
+                        }
+                    } catch {
+                        print("保存点赞状态到本地失败: \(error)")
+                    }
+                case .failure(let error):
+                    print("更新点赞数到 Firebase 失败: \(error)")
+                    // 回滚：基于 wasLiked 恢复
+                    if !wasLiked {
+                        // 原操作是 like，失败则 unlike
+                        post.unlike(by: currentUser)
+                        liked = false
+                    } else {
+                        // 原操作是 unlike，失败则 like
+                        post.like(by: currentUser)
+                        liked = true
+                    }
+                    likeCount = post.likes
+                }
+            }
+        }
+    }
 }
 
 #Preview {

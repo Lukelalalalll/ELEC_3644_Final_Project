@@ -35,6 +35,14 @@ class User {
     @Relationship(deleteRule: .cascade)
     var courseComments: [CourseComment] = []
     
+    
+    // 新增：用户点赞的帖子和评论
+    @Relationship(deleteRule: .nullify)
+    var likedPosts: [Post] = []
+    
+    @Relationship(deleteRule: .nullify)
+    var likedComments: [PostComment] = []
+    
     init(userId: String, username: String, password: String, email: String, gender: String, avatar: Data? = nil) {
         self.userId = userId
         self.username = username
