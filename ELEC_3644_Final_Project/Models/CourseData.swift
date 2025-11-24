@@ -11,14 +11,13 @@ import Foundation
 func createSampleCourses() -> [Course] {
     var courses: [Course] = []
     
-    // 1. ELEC3644 - Digital System Design
     let elec3644 = Course(
         courseId: "ELEC3644",
-        courseName: "Digital System Design",
+        courseName: "Advanced mobile apps development",
         professor: "Prof. Zhang",
         courseCode: "ELEC3644",
-        credits: 4,
-        courseDescription: "This course covers the principles and practices of digital system design, including logic design, sequential circuits, and system implementation."
+        credits: 6,
+        courseDescription: "This course aims to provide students with advanced knowledge and programming skill to develop innovative and sophisticated mobile apps on iOS platfom. "
     )
     
     // 添加上课时间
