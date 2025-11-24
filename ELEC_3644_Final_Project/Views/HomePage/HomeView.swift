@@ -554,7 +554,7 @@ struct HomeView: View {
 //                        }
                     
                     // 2. 图书馆快速访问按钮
-                    NavigationLink(destination: Text("Library View").navigationTitle("Library")) {
+                    NavigationLink(destination: LibraryView().navigationTitle("Library")) {
                         LibraryQuickAccessCard()
                     }
                     .buttonStyle(PlainButtonStyle())
