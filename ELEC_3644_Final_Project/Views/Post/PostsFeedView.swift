@@ -27,6 +27,8 @@ struct PostsFeedView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    Spacer()
+                        .frame(height: 50)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
@@ -47,7 +49,6 @@ struct PostsFeedView: View {
                 await refreshPosts()
             }
             .onAppear {
-                // 增强：添加更积极的刷新策略
                 let shouldRefresh = posts.isEmpty ||
                                   Date().timeIntervalSince(lastRefreshTime) > 300 ||
                                   UserDefaults.standard.bool(forKey: "forceRefreshPosts")
@@ -55,7 +56,6 @@ struct PostsFeedView: View {
                 if shouldRefresh {
                     Task {
                         await refreshPosts()
-                        // 重置强制刷新标志
                         UserDefaults.standard.set(false, forKey: "forceRefreshPosts")
                     }
                 }
@@ -63,15 +63,12 @@ struct PostsFeedView: View {
         }
     }
     
-    // 刷新帖子的异步方法 - 从 Firebase 获取最新数据
     private func refreshPosts() async {
         isRefreshing = true
         defer { isRefreshing = false }
         
         do {
             print("开始从 Firebase 强制刷新所有帖子...")
-            
-            // 强制从 Firebase 获取最新帖子
             let firebasePosts = try await fetchPostsFromFirebase()
             
             await MainActor.run {
@@ -91,7 +88,6 @@ struct PostsFeedView: View {
         }
     }
     
-    // 从 Firebase 获取帖子的异步方法
     private func fetchPostsFromFirebase() async throws -> [Post] {
         return try await withCheckedThrowingContinuation { continuation in
             FirebaseService.shared.fetchPosts { result in
@@ -108,31 +104,24 @@ struct PostsFeedView: View {
     @MainActor
     private func updateLocalPosts(with firebasePosts: [Post]) {
         do {
-            // 获取当前所有本地帖子
             let localPosts = try modelContext.fetch(FetchDescriptor<Post>())
             
-            // 创建帖子 ID 映射，用于快速查找
             var localPostDict = [String: Post]()
             for post in localPosts {
                 localPostDict[post.postId] = post
             }
             
-            // 处理每个 Firebase 帖子
             for firebasePost in firebasePosts {
                 if let existingPost = localPostDict[firebasePost.postId] {
-                    // 更新现有帖子
                     updateExistingPost(existingPost, with: firebasePost)
                 } else {
-                    // 插入新帖子
                     modelContext.insert(firebasePost)
                     
-                    // 处理作者信息
                     if let firebaseAuthor = firebasePost.author {
                         linkOrCreateUser(firebaseAuthor)
                         firebasePost.author = getLocalUser(by: firebaseAuthor.userId) ?? firebaseAuthor
                     }
                     
-                    // 处理评论
                     for comment in firebasePost.comments {
                         modelContext.insert(comment)
                         comment.post = firebasePost
@@ -145,7 +134,6 @@ struct PostsFeedView: View {
                 }
             }
             
-            // 删除本地存在但 Firebase 中不存在的帖子
             let firebasePostIds = Set(firebasePosts.map { $0.postId })
             for localPost in localPosts {
                 if !firebasePostIds.contains(localPost.postId) {
@@ -153,7 +141,6 @@ struct PostsFeedView: View {
                 }
             }
             
-            // 保存更改
             try modelContext.save()
             
             print("本地数据库更新完成，现有 \(firebasePosts.count) 个帖子")
@@ -172,13 +159,11 @@ struct PostsFeedView: View {
         existingPost.postDate = firebasePost.postDate
         existingPost.postImage = firebasePost.postImage
         
-        // 作者同步
         if let firebaseAuthor = firebasePost.author {
             linkOrCreateUser(firebaseAuthor)
             existingPost.author = getLocalUser(by: firebaseAuthor.userId) ?? firebaseAuthor
         }
         
-        // 同步评论 - 使用新的彻底同步方法
         syncAllComments(for: existingPost, from: firebasePost.comments)
     }
     
@@ -186,7 +171,6 @@ struct PostsFeedView: View {
     @MainActor
     private func linkOrCreateUser(_ firebaseUser: User) {
         if getLocalUser(by: firebaseUser.userId) == nil {
-            // 用户不存在，创建新用户
             let newUser = User(
                 userId: firebaseUser.userId,
                 username: firebaseUser.username,

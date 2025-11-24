@@ -203,30 +203,6 @@ struct PostDetailView: View {
                                 }
                             }
                     }
-                    
-                    // Stats
-                    HStack(spacing: 24) {
-                        HStack(spacing: 6) {
-                            Image(systemName: liked ? "heart.fill" : "heart")
-                                .foregroundColor(liked ? .red : .secondary)
-                            Text("\(likeCount)")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(liked ? .red : .secondary)
-                        }
-                        
-                        HStack(spacing: 6) {
-                            Image(systemName: "message")
-                                .foregroundColor(.secondary)
-                            Text("\(comments.count)")
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Spacer()
-                    }
-                    .padding(.top, 8)
                 }
                 .padding(20)
                 .background(
@@ -361,6 +337,8 @@ struct PostDetailView: View {
                         .padding(.horizontal, 16)
                     }
                 }
+                Spacer()
+                    .frame(height: 50)
             }
             .padding(.vertical, 8)
         }
