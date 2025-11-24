@@ -73,11 +73,11 @@ struct MainTabContainerView: View {
     @ViewBuilder
     private var currentPage: some View {
         switch selectedTab {
-        case 0: HomeView()
+        case 0: HomeView(selectedTab: $selectedTab)
         case 1: PostsFeedView()
         case 2: CoursesView()
         case 3: ProfileView()
-        default: HomeView()
+        default: HomeView(selectedTab: $selectedTab)
         }
     }
     
