@@ -19,144 +19,167 @@ struct CoursesView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(height: 0)
-                
-                NavigationLink(destination: MyCoursesView()) {
-                    HStack {
-                        Image(systemName: "book.fill")
-                            .resizable()
-                            .frame(width: 20, height: 20)
-                        Text("My Courses")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                    )
-                }
-                .padding(.horizontal)
-                
-                NavigationLink(destination: HomeworkView()) {
-                    HStack {
-                        Image(systemName: "calendar.badge.clock")
-                            .resizable()
-                            .frame(width: 20, height: 20)
-                        Text("Homework Deadlines")
-                            .font(.headline)
-                            .fontWeight(.semibold)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                    )
-                }
-                .padding(.horizontal)
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.gray)
-                    TextField("Search by course name or code", text: $searchText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.search)
-                        .onSubmit {
-                            hideKeyboard()
+            VStack(spacing: 0) {
+                VStack(spacing: 20) {
+                    NavigationLink(destination: MyCoursesView()) {
+                        HStack {
+                            Image(systemName: "book.fill")
+                                .resizable()
+                                .frame(width: 26, height: 26)
+                                .foregroundColor(.blue)
+                            Text("My Courses")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 18))
+                                .foregroundColor(.gray)
                         }
-                        .onChange(of: searchText) { oldValue, newValue in
-                            filterCourses()
-                        }
-                }
-                .padding(10)
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
-                .padding(.horizontal)
-                
-                if isInitialLoading {
-                    ProgressView("Loading courses...")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 50)
-                } else if let errorMessage = errorMessage {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 40))
-                            .foregroundColor(.orange)
-                        Text(errorMessage)
-                            .foregroundColor(.red)
-                            .multilineTextAlignment(.center)
-                        Button("Retry") {
-                            loadAllCoursesFromFirebase()
-                        }
-                        .buttonStyle(.bordered)
+                        .padding(.vertical, 20)
+                        .padding(.horizontal, 20)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.blue.opacity(0.15))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.blue.opacity(0.4), lineWidth: 1.5)
+                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 20)
-                } else if !searchText.isEmpty && !filteredCourses.isEmpty {
+                    .padding(.horizontal, 20)
 
-                    List(filteredCourses) { course in
-                        NavigationLink {
-                            CourseDetailView(course: course)
-                        } label: {
-                            CourseSearchRowView(course: course)
+                    NavigationLink(destination: HomeworkView()) {
+                        HStack {
+                            Image(systemName: "calendar.badge.clock")
+                                .resizable()
+                                .frame(width: 26, height: 26)
+                                .foregroundColor(.orange)
+                            Text("Homework Deadlines")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 18))
+                                .foregroundColor(.gray)
                         }
+                        .padding(.vertical, 20)
+                        .padding(.horizontal, 20)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.orange.opacity(0.15))
+                        .cornerRadius(16)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(Color.orange.opacity(0.4), lineWidth: 1.5)
+                        )
                     }
-                    .listStyle(.plain)
-                } else if !searchText.isEmpty && filteredCourses.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 40))
-                            .foregroundColor(.gray)
-                        Text("Course not found")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                        Text("Try different keywords")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 50)
-                } else {
-                    VStack(spacing: 16) {
-                        Image(systemName: "graduationcap.circle")
-                            .font(.system(size: 50))
-                            .foregroundColor(.blue)
-                        VStack(spacing: 4) {
-                            Text("Search for Courses")
-                                .font(.headline)
-                                .foregroundColor(.primary)
-                            Text("Enter course name or code to start searching")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 50)
+                    .padding(.horizontal, 20)
                 }
-                
-                Spacer()
+                .padding(.top, 12)
+                .padding(.bottom, 32)
+                .background(Color(.systemBackground))
+
+                Divider()
+
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 18))
+                                .foregroundColor(.gray)
+                            TextField("Search by course name or code", text: $searchText)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .submitLabel(.search)
+                                .onSubmit { hideKeyboard() }
+                                .onChange(of: searchText) { _, _ in filterCourses() }
+                        }
+                        .padding(14)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(12)
+                        .padding(.horizontal, 20)
+
+                        if isInitialLoading {
+                            ProgressView("Loading courses...")
+                                .font(.title3)
+                                .frame(maxWidth: .infinity, minHeight: 300)
+                                .padding(.top, 60)
+                        }
+                        else if let errorMessage = errorMessage {
+                            VStack(spacing: 20) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 56))
+                                    .foregroundColor(.orange)
+                                Text(errorMessage)
+                                    .font(.title3)
+                                    .foregroundColor(.red)
+                                    .multilineTextAlignment(.center)
+                                Button("Retry") {
+                                    loadAllCoursesFromFirebase()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 300)
+                            .padding(.top, 60)
+                        }
+                        else if !searchText.isEmpty && !filteredCourses.isEmpty {
+                            ForEach(filteredCourses) { course in
+                                NavigationLink(destination: CourseDetailView(course: course)) {
+                                    CourseSearchRowView(course: course)
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 20)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(Color(.systemBackground))
+                                }
+                                .listRowInsets(.init())
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                            }
+                        }
+                        else if !searchText.isEmpty && filteredCourses.isEmpty {
+                            VStack(spacing: 20) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 64))
+                                    .foregroundColor(.gray.opacity(0.6))
+                                Text("Course not found")
+                                    .font(.title2)
+                                    .fontWeight(.medium)
+                                Text("Try different keywords")
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 300)
+                            .padding(.top, 60)
+                        }
+                        else {
+                            VStack(spacing: 20) {
+                                Image(systemName: "graduationcap.circle.fill")
+                                    .font(.system(size: 80))
+                                    .foregroundColor(.blue.opacity(0.8))
+                                VStack(spacing: 8) {
+                                    Text("Search for Courses")
+                                        .font(.title2)
+                                        .fontWeight(.semibold)
+                                    Text("Enter course name or code to start searching")
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 300)
+                            .padding(.top, 60)
+                        }
+                    }
+                }
             }
             .navigationTitle("Courses")
+            .navigationBarTitleDisplayMode(.large)
+            .ignoresSafeArea(.keyboard)
             .refreshable {
-                loadAllCoursesFromFirebase()
+                await loadAllCoursesFromFirebase()
+            }
+            .onAppear {
+                if allCourses.isEmpty {
+                    loadAllCoursesFromFirebase()
+                }
             }
         }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
@@ -164,11 +187,10 @@ struct CoursesView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .onAppear {
-            if allCourses.isEmpty {
-                loadAllCoursesFromFirebase()
-            }
-        }
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
     
     private func loadAllCoursesFromFirebase() {
