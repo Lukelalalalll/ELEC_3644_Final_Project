@@ -62,12 +62,12 @@ struct AddCourseView: View {
             // 课程列表
             List {
                 if filteredCourses.isEmpty && !searchText.isEmpty {
-                    Text("未找到课程")
+                    Text("Course not found")
                         .foregroundColor(.secondary)
                         .italic()
                         .frame(maxWidth: .infinity, alignment: .center)
                 } else if !searchText.isEmpty {
-                    Section("可选课程") {
+                    Section("Selectable Courses") {
                         ForEach(filteredCourses) { course in
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -95,7 +95,7 @@ struct AddCourseView: View {
                         }
                     }
                 } else {
-                    Text("输入课程名称或代码开始搜索")
+                    Text("Input the course name/code to start searching...")
                         .foregroundColor(.secondary)
                         .italic()
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -111,17 +111,21 @@ struct AddCourseView: View {
             }
         }
         .alert("Course Added Successfully", isPresented: $showConfirmation) {
-            Button("好") { }
+            Button("OK") { }
         } message: {
-            Text("\(addedCourseName) 已成功加入你的课程表")
+            Text("\(addedCourseName) added to your course schedule successfully!")
         }
-        .alert("出错了", isPresented: .constant(errorMessage != nil)) {
-            Button("确定") { errorMessage = nil }
+        .alert("Error", isPresented: .constant(errorMessage != nil)) {
+            Button("Sure") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
         }
         .onAppear {
             filterCourses()
+        }
+        // 添加点击空白处收回键盘的功能
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         }
     }
     
@@ -184,7 +188,6 @@ struct AddCourseView: View {
                 case .success:
                     print("Firebase add course success")
                     
-                    // 本地同步 enrolledCourseIds
                     if !user.enrolledCourseIds.contains(course.courseId) {
                         user.enrolledCourseIds.append(course.courseId)
                     }

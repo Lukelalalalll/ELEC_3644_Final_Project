@@ -1,12 +1,3 @@
-//
-//  LocationManager.swift
-//  lab5
-//
-//  Created by cccakkke on 2025/11/12.
-//
-
-
-// LocationManager.swift
 import CoreLocation
 import Observation
 

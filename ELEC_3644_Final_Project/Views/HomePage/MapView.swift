@@ -239,7 +239,7 @@ struct MapView: View {
     
     // HKU 主要建筑坐标
     private let hkuBuildings: [HKUBuilding] = [
-        HKUBuilding(name: "Main Building", coordinate: CLLocationCoordinate2D(latitude: 22.2832, longitude: 114.1378), description: "University's central administrative building"),
+        HKUBuilding(name: "Main Building", coordinate: CLLocationCoordinate2D(latitude: 22.2828, longitude: 114.13771), description: "University's central administrative building"),
         HKUBuilding(name: "Library", coordinate: CLLocationCoordinate2D(latitude: 22.2835, longitude: 114.1370), description: "Main University Library"),
         HKUBuilding(name: "Engineering Building", coordinate: CLLocationCoordinate2D(latitude: 22.2825, longitude: 114.1365), description: "Faculty of Engineering"),
         HKUBuilding(name: "Science Building", coordinate: CLLocationCoordinate2D(latitude: 22.2820, longitude: 114.1380), description: "Faculty of Science"),

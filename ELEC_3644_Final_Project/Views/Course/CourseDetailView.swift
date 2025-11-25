@@ -42,17 +42,6 @@ struct CourseDetailView: View {
                             Text("\(course.credits) credits")
                                 .font(.subheadline)
                         }
-                        
-                        HStack(spacing: 6) {
-                            Image(systemName: "star.fill")
-                                .foregroundColor(.yellow)
-                                .font(.caption)
-                            Text(String(format: "%.1f", course.averageRating()))
-                                .font(.subheadline)
-                            Text("(\(course.comments.count))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
