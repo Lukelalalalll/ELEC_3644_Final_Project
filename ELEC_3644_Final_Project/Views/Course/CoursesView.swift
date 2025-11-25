@@ -1,13 +1,6 @@
-//
-//  CoursesView.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/20.
-//
-
-
 import SwiftUI
 import SwiftData
+
 struct CoursesView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var users: [User]
@@ -21,7 +14,6 @@ struct CoursesView: View {
         users.first
     }
     
-    // 获取 CourseData 中的课程
     private var sampleCourses: [Course] {
         createSampleCourses()
     }
@@ -29,7 +21,58 @@ struct CoursesView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 16) {
-                // 搜索框
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(height: 0)
+                
+                NavigationLink(destination: MyCoursesView()) {
+                    HStack {
+                        Image(systemName: "book.fill")
+                            .resizable()
+                            .frame(width: 20, height: 20)
+                        Text("My Courses")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal)
+                
+                NavigationLink(destination: HomeworkView()) {
+                    HStack {
+                        Image(systemName: "calendar.badge.clock")
+                            .resizable()
+                            .frame(width: 20, height: 20)
+                        Text("Homework Deadlines")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal)
+
                 HStack {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.gray)
@@ -43,99 +86,31 @@ struct CoursesView: View {
                 .cornerRadius(10)
                 .padding(.horizontal)
                 
-                // 搜索结果列表
                 if !searchText.isEmpty && !filteredCourses.isEmpty {
-                    List {
-                        Section(header: Text("Search Results")) {
-                            ForEach(filteredCourses) { course in
-                                NavigationLink(destination: CourseDetailView(course: course)) {
-                                    VStack(alignment: .leading) {
-                                        Text(course.courseName)
-                                            .font(.headline)
-                                        Text(course.courseCode)
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-                                        Text("Prof. \(course.professor)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: min(CGFloat(filteredCourses.count * 70), 200))
-                    .listStyle(PlainListStyle())
-                }
-                
-                // 顶部：Weekly Course Schedule 按钮
-                NavigationLink(destination: CoursesScheduleView()) {
-                    HStack {
-                        Image(systemName: "calendar")
-                            .resizable()
-                            .frame(width: 20, height: 20)
-                        Text("Weekly Course Schedule")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Search Results")
                             .font(.headline)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(Color.gray.opacity(0.2))
-                    .cornerRadius(8)
-                }
-                .padding(.horizontal)
-                
-                // 作业 deadline 列表
-                List {
-                    Section(header: Text("Assignments Deadlines")) {
-                        if userHomework.isEmpty {
-                            Text("No upcoming assignments")
-                                .foregroundColor(.secondary)
-                                .italic()
-                        } else {
-                            ForEach(userHomework, id: \.homeworkId) { homework in
-                                HStack {
-                                    Image(systemName: homework.isDueSoon() ? "exclamationmark.triangle.fill" : "clock")
-                                        .resizable()
-                                        .frame(width: 20, height: 20)
-                                        .foregroundColor(homework.isDueSoon() ? .orange : .primary)
-                                    
-                                    VStack(alignment: .leading) {
-                                        Text(homework.title)
-                                            .font(.headline)
-                                        Text("Due: \(formatDate(homework.dueDate))")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-                                        if let courseName = homework.course?.courseName {
-                                            Text(courseName)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                            .padding(.horizontal)
+                        
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(filteredCourses) { course in
+                                    NavigationLink(destination: CourseDetailView(course: course)) {
+                                        CourseSearchResultCard(course: course)
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
-                                .padding(.vertical, 4)
                             }
-                        }
-                    }
-                    
-                    // 添加课程按钮
-                    NavigationLink(destination: AddCourseView()) {
-                        HStack {
-                            Image(systemName: "plus.circle.fill")
-                                .resizable()
-                                .frame(width: 20, height: 20)
-                                .foregroundColor(.blue)
-                            Text("Add New Course")
-                                .foregroundColor(.primary)
+                            .padding(.horizontal)
                         }
                     }
                 }
-                .listStyle(PlainListStyle())
+                
+                Spacer()
             }
             .navigationTitle("Courses")
-            .onAppear {
-                loadUserHomework()
-            }
-            // 添加底部内边距以避免与 TabBar 重叠
-            .padding(.bottom, 80)
         }
     }
     
@@ -143,7 +118,6 @@ struct CoursesView: View {
         if searchText.isEmpty {
             filteredCourses = []
         } else {
-            // 只搜索 CourseData 中的课程
             filteredCourses = sampleCourses.filter { course in
                 course.courseName.localizedCaseInsensitiveContains(searchText) ||
                 course.courseCode.localizedCaseInsensitiveContains(searchText)
@@ -163,10 +137,83 @@ struct CoursesView: View {
         return formatter.string(from: date)
     }
 }
-struct CoursesScheduleView: View {
+
+struct CourseSearchResultCard: View {
+    let course: Course
+    
     var body: some View {
-        Text("Weekly Course Schedule View")
-            .navigationTitle("Weekly Schedule")
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.1))
+                    .frame(width: 50, height: 50)
+                
+                Text(getCoursePrefix(course.courseCode))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.blue)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(course.courseCode)
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                
+                Text(course.courseName)
+                    .font(.subheadline)
+                    .fontWeight(.regular)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                
+                Text("Prof. \(course.professor)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                HStack {
+                    Text("\(course.credits) credits")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(6)
+                    
+                    if !course.classTimes.isEmpty {
+                        Text("\(course.classTimes.count) sessions")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.1))
+                            .foregroundColor(.green)
+                            .cornerRadius(6)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.gray)
+        }
+        .padding(16)
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+    }
+    
+    private func getCoursePrefix(_ courseCode: String) -> String {
+        if courseCode.count >= 4 {
+            return String(courseCode.prefix(4)).uppercased()
+        } else {
+            return courseCode.uppercased()
+        }
     }
 }
 
