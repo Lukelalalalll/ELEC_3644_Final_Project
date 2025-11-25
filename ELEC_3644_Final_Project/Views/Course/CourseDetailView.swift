@@ -1,5 +1,14 @@
 //import SwiftUI
 //import SwiftData
+//import FirebaseFirestore
+//
+//
+//extension CourseDetailView {
+//    public init(course: Course) {
+//        self.course = course
+//    }
+//}
+//
 //
 //struct CourseDetailView: View {
 //    let course: Course
@@ -12,12 +21,16 @@
 //    @State private var isRefreshing = false
 //    @State private var showAlert = false
 //    @State private var alertMessage = ""
+//    @State private var firebaseComments: [CourseComment] = []
 //    
 //    @Query private var users: [User]
 //    
 //    private var currentUser: User? {
 //        users.first
 //    }
+//    
+//    // 监听 Firebase 评论变化
+//    private var commentsListener: ListenerRegistration?
 //    
 //    // 计算属性：按钮背景色
 //    private var submitButtonBackground: Color {
@@ -60,6 +73,12 @@
 //        .refreshable {
 //            await refreshCommentsAsync()
 //        }
+//        .onAppear {
+//            setupCommentsListener()
+//        }
+//        .onDisappear {
+//            commentsListener?.remove()
+//        }
 //    }
 //    
 //    // MARK: - 子视图组件
@@ -98,7 +117,7 @@
 //                    Image(systemName: "star.fill")
 //                        .foregroundColor(.orange)
 //                        .font(.caption)
-//                    Text(String(format: "%.1f", course.averageRating()))
+//                    Text(String(format: "%.1f", calculateAverageRating()))
 //                        .font(.subheadline)
 //                }
 //            }
@@ -136,9 +155,17 @@
 //                .font(.headline)
 //                .foregroundColor(.primary)
 //            
-//            VStack(spacing: 12) {
-//                ForEach(course.classTimes, id: \.dayOfWeek) { classTime in
-//                    ClassTimeRow(classTime: classTime)
+//            if course.classTimes.isEmpty {
+//                Text("No schedule available")
+//                    .font(.body)
+//                    .foregroundColor(.secondary)
+//                    .frame(maxWidth: .infinity, alignment: .center)
+//                    .padding(20)
+//            } else {
+//                VStack(spacing: 12) {
+//                    ForEach(course.classTimes, id: \.dayOfWeek) { classTime in
+//                        ClassTimeRow(classTime: classTime)
+//                    }
 //                }
 //            }
 //        }
@@ -223,7 +250,7 @@
 //                Spacer()
 //                
 //                HStack(spacing: 8) {
-//                    Text("\(course.comments.count) reviews")
+//                    Text("\(firebaseComments.count) reviews")
 //                        .font(.subheadline)
 //                        .foregroundColor(.secondary)
 //                    
@@ -236,11 +263,11 @@
 //                }
 //            }
 //            
-//            if course.comments.isEmpty {
+//            if firebaseComments.isEmpty {
 //                emptyReviewsView
 //            } else {
 //                LazyVStack(spacing: 16) {
-//                    ForEach(course.comments.sorted { $0.commentDate > $1.commentDate }) { comment in
+//                    ForEach(firebaseComments.sorted { $0.commentDate > $1.commentDate }) { comment in
 //                        ReviewCard(comment: comment, onDelete: {
 //                            deleteComment(comment)
 //                        })
@@ -273,7 +300,89 @@
 //        .padding(40)
 //    }
 //    
-//    // MARK: - 方法
+//    // MARK: - Firebase 实时评论方法
+//    
+//    private func setupCommentsListener() {
+//        let db = Firestore.firestore()
+//        
+//        // 监听 courseComments 集合中该课程的所有评论
+//        db.collection("courseComments")
+//            .whereField("courseId", isEqualTo: course.courseId)
+//            .order(by: "commentDate", descending: true)
+//            .addSnapshotListener { snapshot, error in
+//                if let error = error {
+//                    print("❌ 监听评论失败: \(error)")
+//                    return
+//                }
+//                
+//                guard let documents = snapshot?.documents else {
+//                    print("ℹ️ 没有找到评论")
+//                    return
+//                }
+//                
+//                var comments: [CourseComment] = []
+//                let group = DispatchGroup()
+//                
+//                for document in documents {
+//                    let data = document.data()
+//                    let commentId = data["commentId"] as? String ?? ""
+//                    let content = data["content"] as? String ?? ""
+//                    let rating = data["rating"] as? Int ?? 5
+//                    let authorId = data["authorId"] as? String ?? ""
+//                    let authorUsername = data["authorUsername"] as? String ?? ""
+//                    
+//                    let comment = CourseComment(
+//                        commentId: commentId,
+//                        content: content,
+//                        rating: rating
+//                    )
+//                    
+//                    if let timestamp = data["commentDate"] as? Timestamp {
+//                        comment.commentDate = timestamp.dateValue()
+//                    }
+//                    
+//                    // 异步获取作者信息
+//                    group.enter()
+//                    self.fetchAuthorInfo(authorId: authorId, authorUsername: authorUsername) { author in
+//                        comment.author = author
+//                        group.leave()
+//                    }
+//                    
+//                    comments.append(comment)
+//                }
+//                
+//                group.notify(queue: .main) {
+//                    self.firebaseComments = comments
+//                    print("✅ 实时更新评论，共 \(comments.count) 条")
+//                }
+//            }
+//    }
+//    
+//    private func fetchAuthorInfo(authorId: String, authorUsername: String, completion: @escaping (User) -> Void) {
+//        // 首先尝试从本地查找用户
+//        if let localUser = users.first(where: { $0.userId == authorId }) {
+//            completion(localUser)
+//            return
+//        }
+//        
+//        // 如果本地没有，从 Firebase 获取用户信息
+//        FirebaseService.shared.getUserData(userId: authorId) { result in
+//            switch result {
+//            case .success(let user):
+//                completion(user)
+//            case .failure:
+//                // 如果获取失败，创建基础用户对象
+//                let fallbackUser = User(
+//                    userId: authorId,
+//                    username: authorUsername,
+//                    password: "",
+//                    email: "",
+//                    gender: "Unknown"
+//                )
+//                completion(fallbackUser)
+//            }
+//        }
+//    }
 //    
 //    private func submitReview() {
 //        guard let currentUser = currentUser else {
@@ -289,7 +398,7 @@
 //        
 //        isSubmitting = true
 //        
-//        // 同步到 Firebase
+//        // 直接提交到 Firebase
 //        FirebaseService.shared.addCourseComment(
 //            courseId: course.courseId,
 //            content: trimmedText,
@@ -297,34 +406,16 @@
 //            author: currentUser
 //        ) { result in
 //            DispatchQueue.main.async {
-//                isSubmitting = false
+//                self.isSubmitting = false
 //                
 //                switch result {
-//                case .success(let firebaseComment):
-//                    // 创建本地评论对象
-//                    let localComment = CourseComment(
-//                        commentId: firebaseComment.commentId,
-//                        content: trimmedText,
-//                        rating: newCommentRating,
-//                        author: currentUser,
-//                        course: course
-//                    )
-//                    localComment.commentDate = firebaseComment.commentDate
-//                    
-//                    // 保存到本地
-//                    modelContext.insert(localComment)
-//                    
-//                    do {
-//                        try modelContext.save()
-//                        newCommentText = ""
-//                        newCommentRating = 5
-//                        showAlert(message: "Review submitted successfully!")
-//                    } catch {
-//                        showAlert(message: "Failed to save review locally: \(error.localizedDescription)")
-//                    }
+//                case .success:
+//                    self.newCommentText = ""
+//                    self.newCommentRating = 5
+//                    self.showAlert(message: "Review submitted successfully!")
 //                    
 //                case .failure(let error):
-//                    showAlert(message: "Failed to submit review: \(error.localizedDescription)")
+//                    self.showAlert(message: "Failed to submit review: \(error.localizedDescription)")
 //                }
 //            }
 //        }
@@ -333,39 +424,18 @@
 //    private func refreshComments() {
 //        isRefreshing = true
 //        
+//        // 手动刷新评论
 //        FirebaseService.shared.fetchCourseComments(courseId: course.courseId) { result in
 //            DispatchQueue.main.async {
-//                isRefreshing = false
+//                self.isRefreshing = false
 //                
 //                switch result {
-//                case .success(let firebaseComments):
-//                    // 清除本地评论
-//                    for comment in course.comments {
-//                        modelContext.delete(comment)
-//                    }
-//                    
-//                    // 添加从 Firebase 获取的评论
-//                    for firebaseComment in firebaseComments {
-//                        let localComment = CourseComment(
-//                            commentId: firebaseComment.commentId,
-//                            content: firebaseComment.content,
-//                            rating: firebaseComment.rating,
-//                            author: firebaseComment.author,
-//                            course: course
-//                        )
-//                        localComment.commentDate = firebaseComment.commentDate
-//                        modelContext.insert(localComment)
-//                    }
-//                    
-//                    do {
-//                        try modelContext.save()
-//                        showAlert(message: "Comments refreshed successfully!")
-//                    } catch {
-//                        showAlert(message: "Failed to refresh comments: \(error.localizedDescription)")
-//                    }
+//                case .success(let comments):
+//                    self.firebaseComments = comments
+//                    self.showAlert(message: "Comments refreshed successfully!")
 //                    
 //                case .failure(let error):
-//                    showAlert(message: "Failed to refresh comments: \(error.localizedDescription)")
+//                    self.showAlert(message: "Failed to refresh comments: \(error.localizedDescription)")
 //                }
 //            }
 //        }
@@ -386,20 +456,21 @@
 //            DispatchQueue.main.async {
 //                switch result {
 //                case .success:
-//                    // 从本地删除
-//                    modelContext.delete(comment)
-//                    do {
-//                        try modelContext.save()
-//                        showAlert(message: "Review deleted successfully!")
-//                    } catch {
-//                        showAlert(message: "Failed to delete review locally: \(error.localizedDescription)")
-//                    }
+//                    // 从本地状态中移除
+//                    self.firebaseComments.removeAll { $0.commentId == comment.commentId }
+//                    self.showAlert(message: "Review deleted successfully!")
 //                    
 //                case .failure(let error):
-//                    showAlert(message: "Failed to delete review: \(error.localizedDescription)")
+//                    self.showAlert(message: "Failed to delete review: \(error.localizedDescription)")
 //                }
 //            }
 //        }
+//    }
+//    
+//    private func calculateAverageRating() -> Double {
+//        guard !firebaseComments.isEmpty else { return 0.0 }
+//        let total = firebaseComments.reduce(0) { $0 + Double($1.rating) }
+//        return total / Double(firebaseComments.count)
 //    }
 //    
 //    private func showAlert(message: String) {
@@ -414,6 +485,19 @@
 //struct ClassTimeRow: View {
 //    let classTime: ClassTime
 //    
+//    private var dayOfWeekString: String {
+//        let dayNames = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+//        return dayNames.indices.contains(classTime.dayOfWeek) ? dayNames[classTime.dayOfWeek] : "Unknown"
+//    }
+//    
+//    private var timeString: String {
+//        let formatter = DateFormatter()
+//        formatter.dateFormat = "HH:mm"
+//        let start = formatter.string(from: classTime.startTime)
+//        let end = formatter.string(from: classTime.endTime)
+//        return "\(start) - \(end)"
+//    }
+//    
 //    var body: some View {
 //        HStack {
 //            HStack(spacing: 12) {
@@ -422,7 +506,7 @@
 //                    .frame(width: 20)
 //                
 //                VStack(alignment: .leading, spacing: 2) {
-//                    Text(classTime.timeString())
+//                    Text(timeString)
 //                        .font(.subheadline)
 //                        .foregroundColor(.primary)
 //                    Text(classTime.location)
@@ -433,8 +517,7 @@
 //            
 //            Spacer()
 //            
-//            // 修复：使用 ClassTime 中实际存在的方法
-//            Text(classTime.dayOfWeekString()) 
+//            Text(dayOfWeekString)
 //                .font(.caption)
 //                .fontWeight(.medium)
 //                .padding(.horizontal, 8)
@@ -455,6 +538,10 @@
 //    let onDelete: () -> Void
 //    
 //    @State private var showDeleteAlert = false
+//    
+//    private var currentUserId: String? {
+//        UserDefaults.standard.string(forKey: "currentUserId")
+//    }
 //    
 //    var body: some View {
 //        VStack(alignment: .leading, spacing: 12) {
@@ -529,18 +616,26 @@
 //    }
 //    
 //    private func isCurrentUserAuthor() -> Bool {
-//        // 这里需要获取当前用户并比较
-//        // 简化版本：假设可以删除（实际应用中应该检查权限）
-//        return true
+//        guard let currentUserId = currentUserId,
+//              let authorId = comment.author?.userId else {
+//            return false
+//        }
+//        return currentUserId == authorId
 //    }
 //}
 
 
 
 
-
 import SwiftUI
 import SwiftData
+import FirebaseFirestore
+
+extension CourseDetailView {
+    public init(course: Course) {
+        self.course = course
+    }
+}
 
 struct CourseDetailView: View {
     let course: Course
@@ -553,12 +648,16 @@ struct CourseDetailView: View {
     @State private var isRefreshing = false
     @State private var showAlert = false
     @State private var alertMessage = ""
+    @State private var firebaseComments: [CourseComment] = []
     
     @Query private var users: [User]
     
     private var currentUser: User? {
         users.first
     }
+    
+    // 监听 Firebase 评论变化
+    private var commentsListener: ListenerRegistration?
     
     // 计算属性：按钮背景色
     private var submitButtonBackground: Color {
@@ -601,6 +700,12 @@ struct CourseDetailView: View {
         .refreshable {
             await refreshCommentsAsync()
         }
+        .onAppear {
+            setupCommentsListener()
+        }
+        .onDisappear {
+            commentsListener?.remove()
+        }
     }
     
     // MARK: - 子视图组件
@@ -639,7 +744,7 @@ struct CourseDetailView: View {
                     Image(systemName: "star.fill")
                         .foregroundColor(.orange)
                         .font(.caption)
-                    Text(String(format: "%.1f", course.averageRating()))
+                    Text(String(format: "%.1f", calculateAverageRating()))
                         .font(.subheadline)
                 }
             }
@@ -772,7 +877,7 @@ struct CourseDetailView: View {
                 Spacer()
                 
                 HStack(spacing: 8) {
-                    Text("\(course.comments.count) reviews")
+                    Text("\(firebaseComments.count) reviews")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
@@ -785,14 +890,18 @@ struct CourseDetailView: View {
                 }
             }
             
-            if course.comments.isEmpty {
+            if firebaseComments.isEmpty {
                 emptyReviewsView
             } else {
                 LazyVStack(spacing: 16) {
-                    ForEach(course.comments.sorted { $0.commentDate > $1.commentDate }) { comment in
-                        ReviewCard(comment: comment, onDelete: {
-                            deleteComment(comment)
-                        })
+                    ForEach(firebaseComments.sorted { $0.commentDate > $1.commentDate }) { comment in
+                        ReviewCard(
+                            comment: comment,
+                            currentUserId: currentUser?.userId,
+                            onDelete: {
+                                deleteComment(comment)
+                            }
+                        )
                     }
                 }
             }
@@ -822,7 +931,89 @@ struct CourseDetailView: View {
         .padding(40)
     }
     
-    // MARK: - 方法
+    // MARK: - Firebase 实时评论方法
+    
+    private func setupCommentsListener() {
+        let db = Firestore.firestore()
+        
+        // 监听 courseComments 集合中该课程的所有评论
+        db.collection("courseComments")
+            .whereField("courseId", isEqualTo: course.courseId)
+            .order(by: "commentDate", descending: true)
+            .addSnapshotListener { snapshot, error in
+                if let error = error {
+                    print("❌ 监听评论失败: \(error)")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    print("ℹ️ 没有找到评论")
+                    return
+                }
+                
+                var comments: [CourseComment] = []
+                let group = DispatchGroup()
+                
+                for document in documents {
+                    let data = document.data()
+                    let commentId = data["commentId"] as? String ?? ""
+                    let content = data["content"] as? String ?? ""
+                    let rating = data["rating"] as? Int ?? 5
+                    let authorId = data["authorId"] as? String ?? ""
+                    let authorUsername = data["authorUsername"] as? String ?? ""
+                    
+                    let comment = CourseComment(
+                        commentId: commentId,
+                        content: content,
+                        rating: rating
+                    )
+                    
+                    if let timestamp = data["commentDate"] as? Timestamp {
+                        comment.commentDate = timestamp.dateValue()
+                    }
+                    
+                    // 异步获取作者信息
+                    group.enter()
+                    self.fetchAuthorInfo(authorId: authorId, authorUsername: authorUsername) { author in
+                        comment.author = author
+                        group.leave()
+                    }
+                    
+                    comments.append(comment)
+                }
+                
+                group.notify(queue: .main) {
+                    self.firebaseComments = comments
+                    print("✅ 实时更新评论，共 \(comments.count) 条")
+                }
+            }
+    }
+    
+    private func fetchAuthorInfo(authorId: String, authorUsername: String, completion: @escaping (User) -> Void) {
+        // 首先尝试从本地查找用户
+        if let localUser = users.first(where: { $0.userId == authorId }) {
+            completion(localUser)
+            return
+        }
+        
+        // 如果本地没有，从 Firebase 获取用户信息
+        FirebaseService.shared.getUserData(userId: authorId) { result in
+            switch result {
+            case .success(let user):
+                completion(user)
+            case .failure:
+                // 如果获取失败，创建基础用户对象
+                let fallbackUser = User(
+                    userId: authorId,
+                    username: authorUsername,
+                    password: "",
+                    email: "",
+                    gender: "Unknown"
+                )
+                completion(fallbackUser)
+            }
+        }
+    }
     
     private func submitReview() {
         guard let currentUser = currentUser else {
@@ -838,7 +1029,7 @@ struct CourseDetailView: View {
         
         isSubmitting = true
         
-        // 同步到 Firebase
+        // 直接提交到 Firebase
         FirebaseService.shared.addCourseComment(
             courseId: course.courseId,
             content: trimmedText,
@@ -846,34 +1037,16 @@ struct CourseDetailView: View {
             author: currentUser
         ) { result in
             DispatchQueue.main.async {
-                isSubmitting = false
+                self.isSubmitting = false
                 
                 switch result {
-                case .success(let firebaseComment):
-                    // 创建本地评论对象
-                    let localComment = CourseComment(
-                        commentId: firebaseComment.commentId,
-                        content: trimmedText,
-                        rating: newCommentRating,
-                        author: currentUser,
-                        course: course
-                    )
-                    localComment.commentDate = firebaseComment.commentDate
-                    
-                    // 保存到本地
-                    modelContext.insert(localComment)
-                    
-                    do {
-                        try modelContext.save()
-                        newCommentText = ""
-                        newCommentRating = 5
-                        showAlert(message: "Review submitted successfully!")
-                    } catch {
-                        showAlert(message: "Failed to save review locally: \(error.localizedDescription)")
-                    }
+                case .success:
+                    self.newCommentText = ""
+                    self.newCommentRating = 5
+                    self.showAlert(message: "Review submitted successfully!")
                     
                 case .failure(let error):
-                    showAlert(message: "Failed to submit review: \(error.localizedDescription)")
+                    self.showAlert(message: "Failed to submit review: \(error.localizedDescription)")
                 }
             }
         }
@@ -882,39 +1055,18 @@ struct CourseDetailView: View {
     private func refreshComments() {
         isRefreshing = true
         
+        // 手动刷新评论
         FirebaseService.shared.fetchCourseComments(courseId: course.courseId) { result in
             DispatchQueue.main.async {
-                isRefreshing = false
+                self.isRefreshing = false
                 
                 switch result {
-                case .success(let firebaseComments):
-                    // 清除本地评论
-                    for comment in course.comments {
-                        modelContext.delete(comment)
-                    }
-                    
-                    // 添加从 Firebase 获取的评论
-                    for firebaseComment in firebaseComments {
-                        let localComment = CourseComment(
-                            commentId: firebaseComment.commentId,
-                            content: firebaseComment.content,
-                            rating: firebaseComment.rating,
-                            author: firebaseComment.author,
-                            course: course
-                        )
-                        localComment.commentDate = firebaseComment.commentDate
-                        modelContext.insert(localComment)
-                    }
-                    
-                    do {
-                        try modelContext.save()
-                        showAlert(message: "Comments refreshed successfully!")
-                    } catch {
-                        showAlert(message: "Failed to refresh comments: \(error.localizedDescription)")
-                    }
+                case .success(let comments):
+                    self.firebaseComments = comments
+                    self.showAlert(message: "Comments refreshed successfully!")
                     
                 case .failure(let error):
-                    showAlert(message: "Failed to refresh comments: \(error.localizedDescription)")
+                    self.showAlert(message: "Failed to refresh comments: \(error.localizedDescription)")
                 }
             }
         }
@@ -935,20 +1087,21 @@ struct CourseDetailView: View {
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    // 从本地删除
-                    modelContext.delete(comment)
-                    do {
-                        try modelContext.save()
-                        showAlert(message: "Review deleted successfully!")
-                    } catch {
-                        showAlert(message: "Failed to delete review locally: \(error.localizedDescription)")
-                    }
+                    // 从本地状态中移除
+                    self.firebaseComments.removeAll { $0.commentId == comment.commentId }
+                    self.showAlert(message: "Review deleted successfully!")
                     
                 case .failure(let error):
-                    showAlert(message: "Failed to delete review: \(error.localizedDescription)")
+                    self.showAlert(message: "Failed to delete review: \(error.localizedDescription)")
                 }
             }
         }
+    }
+    
+    private func calculateAverageRating() -> Double {
+        guard !firebaseComments.isEmpty else { return 0.0 }
+        let total = firebaseComments.reduce(0) { $0 + Double($1.rating) }
+        return total / Double(firebaseComments.count)
     }
     
     private func showAlert(message: String) {
@@ -1013,6 +1166,7 @@ struct ClassTimeRow: View {
 // 评论卡片
 struct ReviewCard: View {
     let comment: CourseComment
+    let currentUserId: String?
     let onDelete: () -> Void
     
     @State private var showDeleteAlert = false
@@ -1090,8 +1244,10 @@ struct ReviewCard: View {
     }
     
     private func isCurrentUserAuthor() -> Bool {
-        // 这里需要获取当前用户并比较
-        // 简化版本：假设可以删除（实际应用中应该检查权限）
-        return true
+        guard let currentUserId = currentUserId,
+              let authorId = comment.author?.userId else {
+            return false
+        }
+        return currentUserId == authorId
     }
 }
