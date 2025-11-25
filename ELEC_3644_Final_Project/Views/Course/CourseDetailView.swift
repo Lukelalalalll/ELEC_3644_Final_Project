@@ -73,6 +73,11 @@ struct CourseDetailView: View {
         }
         .onAppear {
             setupCommentsListener()
+            // 调试信息：打印课程时间段
+            print("Courses ClassTime Count: \(course.classTimes.count)")
+            for (index, classTime) in course.classTimes.enumerated() {
+                print("时间段 \(index): 星期\(classTime.dayOfWeek), \(formatTime(classTime.startTime)) - \(formatTime(classTime.endTime)), 地点: \(classTime.location)")
+            }
         }
         .onDisappear {
             commentsListener?.remove()
@@ -82,9 +87,6 @@ struct CourseDetailView: View {
         }
     }
     
-    // MARK: - 子视图组件
-    
-    // 课程信息卡片
     private var courseInfoCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(course.courseCode)
@@ -113,7 +115,6 @@ struct CourseDetailView: View {
                         .font(.subheadline)
                 }
                 
-                // 平均评分
                 HStack(spacing: 6) {
                     Image(systemName: "star.fill")
                         .foregroundColor(.orange)
@@ -130,7 +131,6 @@ struct CourseDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
     }
     
-    // 课程描述卡片
     private var courseDescriptionCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Course Description")
@@ -149,7 +149,6 @@ struct CourseDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
     }
     
-    // 上课时间卡片
     private var classScheduleCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Class Schedule")
@@ -164,7 +163,7 @@ struct CourseDetailView: View {
                     .padding(20)
             } else {
                 VStack(spacing: 12) {
-                    ForEach(course.classTimes, id: \.dayOfWeek) { classTime in
+                    ForEach(Array(course.classTimes.enumerated()), id: \.offset) { index, classTime in
                         ClassTimeRow(classTime: classTime)
                     }
                 }
@@ -177,14 +176,12 @@ struct CourseDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
     }
     
-    // 添加评论卡片
     private var addReviewCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add Your Review")
                 .font(.headline)
                 .foregroundColor(.primary)
             
-            // 评分选择
             VStack(alignment: .leading, spacing: 8) {
                 Text("Rating")
                     .font(.subheadline)
@@ -240,7 +237,6 @@ struct CourseDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
     }
     
-    // 评论列表卡片
     private var reviewsCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -287,7 +283,6 @@ struct CourseDetailView: View {
         .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
     }
     
-    // 空评论视图
     private var emptyReviewsView: some View {
         VStack(spacing: 12) {
             Image(systemName: "bubble.left")
@@ -304,24 +299,25 @@ struct CourseDetailView: View {
         .frame(maxWidth: .infinity)
         .padding(40)
     }
-    
-    // MARK: - Firebase 实时评论方法
-    
+        
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+        
     private func setupCommentsListener() {
         let db = Firestore.firestore()
         
-        // 监听 courseComments 集合中该课程的所有评论
         db.collection("courseComments")
             .whereField("courseId", isEqualTo: course.courseId)
             .order(by: "commentDate", descending: true)
             .addSnapshotListener { snapshot, error in
                 if let error = error {
-                    print("❌ 监听评论失败: \(error)")
                     return
                 }
                 
                 guard let documents = snapshot?.documents else {
-                    print("ℹ️ 没有找到评论")
                     return
                 }
                 
@@ -346,7 +342,6 @@ struct CourseDetailView: View {
                         comment.commentDate = timestamp.dateValue()
                     }
                     
-                    // 异步获取作者信息
                     group.enter()
                     self.fetchAuthorInfo(authorId: authorId, authorUsername: authorUsername) { author in
                         comment.author = author
@@ -358,25 +353,21 @@ struct CourseDetailView: View {
                 
                 group.notify(queue: .main) {
                     self.firebaseComments = comments
-                    print("✅ 实时更新评论，共 \(comments.count) 条")
                 }
             }
     }
     
     private func fetchAuthorInfo(authorId: String, authorUsername: String, completion: @escaping (User) -> Void) {
-        // 首先尝试从本地查找用户
         if let localUser = users.first(where: { $0.userId == authorId }) {
             completion(localUser)
             return
         }
         
-        // 如果本地没有，从 Firebase 获取用户信息
         FirebaseService.shared.getUserData(userId: authorId) { result in
             switch result {
             case .success(let user):
                 completion(user)
             case .failure:
-                // 如果获取失败，创建基础用户对象
                 let fallbackUser = User(
                     userId: authorId,
                     username: authorUsername,
@@ -403,7 +394,6 @@ struct CourseDetailView: View {
         
         isSubmitting = true
         
-        // 直接提交到 Firebase
         FirebaseService.shared.addCourseComment(
             courseId: course.courseId,
             content: trimmedText,
@@ -429,7 +419,6 @@ struct CourseDetailView: View {
     private func refreshComments() {
         isRefreshing = true
         
-        // 手动刷新评论
         FirebaseService.shared.fetchCourseComments(courseId: course.courseId) { result in
             DispatchQueue.main.async {
                 self.isRefreshing = false
@@ -456,12 +445,10 @@ struct CourseDetailView: View {
     }
     
     private func deleteComment(_ comment: CourseComment) {
-        // 从 Firebase 删除
         FirebaseService.shared.deleteCourseComment(commentId: comment.commentId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success:
-                    // 从本地状态中移除
                     self.firebaseComments.removeAll { $0.commentId == comment.commentId }
                     self.showAlert(message: "Review deleted successfully!")
                     
@@ -484,9 +471,6 @@ struct CourseDetailView: View {
     }
 }
 
-// MARK: - 子视图
-
-// 上课时间行
 struct ClassTimeRow: View {
     let classTime: ClassTime
     
@@ -571,7 +555,6 @@ struct ReviewCard: View {
                 
                 Spacer()
 
-                // 只有评论作者可以删除
                 if isCurrentUserAuthor() {
                     Button(action: {
                         showDeleteAlert = true
