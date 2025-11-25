@@ -308,55 +308,6 @@ struct HomeView: View {
         }
     }
     
-    // 将课程ID转换为SimpleCourse
-//    private func convertCourseIdsToSimpleCourses(_ courseIds: [String]) {
-//        let allSampleCourses = createSampleCourses()
-//        var simpleCourses: [SimpleCourse] = []
-//        
-//        print("🔄 开始转换课程ID到SimpleCourse，共\(courseIds.count)个课程")
-//        
-//        for courseId in courseIds {
-//            if let fullCourse = allSampleCourses.first(where: { $0.courseId == courseId }) {
-//                print("📚 找到课程: \(fullCourse.courseName) - ID: \(fullCourse.courseId)")
-//                
-//                // 为每个上课时间创建单独的 SimpleCourse
-//                for classTime in fullCourse.classTimes {
-//                    let weekday = Weekday(rawValue: classTime.dayOfWeek)
-//                    
-//                    // 格式化时间显示
-//                    let timeFormatter = DateFormatter()
-//                    timeFormatter.dateFormat = "HH:mm"
-//                    let startTimeStr = timeFormatter.string(from: classTime.startTime)
-//                    let endTimeStr = timeFormatter.string(from: classTime.endTime)
-//                    
-//                    let dayNames = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-//                    let dayName = dayNames.indices.contains(classTime.dayOfWeek) ? dayNames[classTime.dayOfWeek] : "Unknown"
-//                    
-//                    let simpleCourse = SimpleCourse(
-//                        courseId: fullCourse.courseId,
-//                        courseName: fullCourse.courseName,
-//                        professor: fullCourse.professor,
-//                        courseCode: fullCourse.courseCode,
-//                        credits: fullCourse.credits,
-//                        time: "\(dayName) \(startTimeStr)-\(endTimeStr)",
-//                        classroom: classTime.location.isEmpty ? "TBD" : classTime.location,
-//                        weekday: weekday,
-//                        startTime: classTime.startTime,
-//                        endTime: classTime.endTime
-//                    )
-//                    simpleCourses.append(simpleCourse)
-//                    print("✅ 添加课程时间段: \(fullCourse.courseCode) - \(dayName) \(startTimeStr)-\(endTimeStr)")
-//                }
-//            } else {
-//                print("❌ 未找到课程ID对应的课程: \(courseId)")
-//            }
-//        }
-//        
-//        print("🎯 最终生成的SimpleCourse数量: \(simpleCourses.count)")
-//        self.userCourses = simpleCourses
-//    }
-    
-    // 将课程ID转换为SimpleCourse
     private func convertCourseIdsToSimpleCourses(_ courseIds: [String]) {
         let allSampleCourses = createSampleCourses()
         var simpleCourses: [SimpleCourse] = []
@@ -365,11 +316,9 @@ struct HomeView: View {
         
         for courseId in courseIds {
             if let fullCourse = allSampleCourses.first(where: { $0.courseId == courseId }) {
-                print("📚 找到课程: \(fullCourse.courseName) - ID: \(fullCourse.courseId)")
+                print("📚 Find Course: \(fullCourse.courseName) - ID: \(fullCourse.courseId)")
                 
-                // 为每个上课时间创建单独的 SimpleCourse
                 for classTime in fullCourse.classTimes {
-                    // 修复：调整星期几的映射
                     let calendarWeekday: Int
                     switch classTime.dayOfWeek {
                     case 1: calendarWeekday = 2 // 周一 -> 2
@@ -390,7 +339,8 @@ struct HomeView: View {
                     let startTimeStr = timeFormatter.string(from: classTime.startTime)
                     let endTimeStr = timeFormatter.string(from: classTime.endTime)
                     
-                    let dayNames = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    // 修复：dayNames 数组索引与 calendarWeekday 对齐
+                    let dayNames = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
                     let dayName = dayNames.indices.contains(calendarWeekday) ? dayNames[calendarWeekday] : "Unknown"
                     
                     let simpleCourse = SimpleCourse(
