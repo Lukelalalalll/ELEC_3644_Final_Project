@@ -5,10 +5,9 @@ struct AddCourseView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    // 不再直接 @Query 所有用户，而是按真实 UID 精确查找
     private var currentUser: User? {
         guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
-            print("UserDefaults 中没有 currentUserId，请重新登录")
+            print("UserDefaults doesn't contain currentUserId，please login first")
             return nil
         }
         
@@ -21,14 +20,14 @@ struct AddCourseView: View {
         do {
             let results = try modelContext.fetch(descriptor)
             if let user = results.first {
-                print("找到当前登录用户 → userId: \(user.userId), username: \(user.username)")
+                print("find current login user → userId: \(user.userId), username: \(user.username)")
                 return user
             } else {
-                print("根据 currentUserId=\(currentUserId) 在本地 SwiftData 中没找到用户")
+                print("According to currentUserId=\(currentUserId) in local SwiftData cannot find user")
                 return nil
             }
         } catch {
-            print("Fetch 当前用户失败: \(error)")
+            print("Fetch current user failed: \(error)")
             return nil
         }
     }
@@ -46,12 +45,13 @@ struct AddCourseView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 搜索栏
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
-                TextField("搜索课程名称或代码", text: $searchText)
-                    .onChange(of: searchText) { _, _ in filterCourses() }
+                TextField("Search course name or course code", text: $searchText)
+                    .onChange(of: searchText) {
+                        filterCourses()
+                    }
             }
             .padding(10)
             .background(Color(.systemGray6))
@@ -103,14 +103,14 @@ struct AddCourseView: View {
             }
             .listStyle(.plain)
         }
-        .navigationTitle("添加课程")
+        .navigationTitle("Add Courses")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button("返回") { dismiss() }
+                Button("Back") { dismiss() }
             }
         }
-        .alert("课程已添加", isPresented: $showConfirmation) {
+        .alert("Course Added Successfully", isPresented: $showConfirmation) {
             Button("好") { }
         } message: {
             Text("\(addedCourseName) 已成功加入你的课程表")
@@ -182,7 +182,7 @@ struct AddCourseView: View {
                 
                 switch result {
                 case .success:
-                    print("Firebase 添加课程成功")
+                    print("Firebase add course success")
                     
                     // 本地同步 enrolledCourseIds
                     if !user.enrolledCourseIds.contains(course.courseId) {
@@ -191,11 +191,10 @@ struct AddCourseView: View {
                     
                     do {
                         try self.modelContext.save()
-                        print("SwiftData 保存成功")
+                        print("SwiftData store success")
                         self.addedCourseName = course.courseName
                         self.showConfirmation = true
                         
-                        // 清空搜索
                         self.searchText = ""
                         self.filteredCourses = []
                     } catch {
@@ -205,7 +204,7 @@ struct AddCourseView: View {
                     
                 case .failure(let error):
                     print("Firebase 添加课程失败: \(error)")
-                    self.errorMessage = "添加失败：\(error.localizedDescription)"
+                    self.errorMessage = "fail to add：\(error.localizedDescription)"
                 }
             }
         }
