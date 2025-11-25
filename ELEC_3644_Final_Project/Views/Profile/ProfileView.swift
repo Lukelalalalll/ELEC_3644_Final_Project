@@ -2,7 +2,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
-import FirebaseAuth  // 添加这行
+import FirebaseAuth  
 
 
 struct ProfileView: View {
@@ -351,8 +351,7 @@ struct ProfileView: View {
                             .foregroundColor(.white)
                             .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 3)
                     }
-                    
-                    // 编辑图标
+
                     Circle()
                         .fill(Color.black.opacity(0.6))
                         .frame(width: 32, height: 32)

@@ -1,10 +1,3 @@
-//
-//  RegisterView.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/21.
-//
-
 import SwiftUI
 import SwiftData
 import FirebaseAuth
@@ -45,7 +38,7 @@ struct RegisterView: View {
                                 .font(.largeTitle)
                                 .fontWeight(.bold)
                             
-                            Text("Join our learning community")
+                            Text("Join our community")
                                 .font(.body)
                                 .foregroundColor(.secondary)
                         }
@@ -92,7 +85,6 @@ struct RegisterView: View {
                                 .pickerStyle(SegmentedPickerStyle())
                             }
                             
-                            // 密码
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Password")
                                     .font(.headline)
@@ -149,7 +141,6 @@ struct RegisterView: View {
                         .disabled(isLoading || !isFormValid)
                         .opacity((isLoading || !isFormValid) ? 0.6 : 1.0)
                         
-                        // 返回欢迎页面按钮
                         Button("Back to Welcome") {
                             dismiss()
                         }
@@ -170,7 +161,7 @@ struct RegisterView: View {
         password == confirmPassword &&
         password.count >= 6
     }
-    // 修改 register 函数
+
     private func register() {
         guard !username.isEmpty else {
             errorMessage = "Please enter a username"
@@ -199,7 +190,6 @@ struct RegisterView: View {
         isLoading = true
         showError = false
         
-        // 检查用户名是否唯一
         FirebaseService.shared.checkUsernameUnique(username) { isUnique in
             if !isUnique {
                 DispatchQueue.main.async {
@@ -210,7 +200,6 @@ struct RegisterView: View {
                 return
             }
             
-            // 注册用户到 Firebase
             FirebaseService.shared.registerUser(
                 username: username,
                 email: email,
@@ -220,17 +209,14 @@ struct RegisterView: View {
                 DispatchQueue.main.async {
                     switch result {
                     case .success(let user):
-                        // 保存到本地数据库（可选）
                         self.modelContext.insert(user)
                         
                         do {
                             try self.modelContext.save()
-                            // 保存登录状态和用户信息
                             UserDefaults.standard.set(true, forKey: "isLoggedIn")
                             UserDefaults.standard.set(user.username, forKey: "currentUsername")
                             UserDefaults.standard.set(user.userId, forKey: "currentUserId")
                             
-                            // 注册成功
                             self.dismiss()
                             self.showMainApp = true
                         } catch {

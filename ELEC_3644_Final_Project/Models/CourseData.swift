@@ -14,7 +14,7 @@ func createSampleCourses() -> [Course] {
     let elec3644 = Course(
         courseId: "ELEC3644",
         courseName: "Advanced mobile apps development",
-        professor: "Prof. Zhang",
+        professor: "Victor Lee",
         courseCode: "ELEC3644",
         credits: 6,
         courseDescription: "This course aims to provide students with advanced knowledge and programming skill to develop innovative and sophisticated mobile apps on iOS platfom. "
@@ -126,7 +126,7 @@ func createSampleCourses() -> [Course] {
         courseName: "Linear Algebra",
         professor: "Prof. Chen",
         courseCode: "MATH1853",
-        credits: 3,
+        credits: 6,
         courseDescription: "Introduction to linear algebra including vectors, matrices, linear transformations, and eigenvalues."
     )
     
@@ -157,7 +157,7 @@ func createSampleCourses() -> [Course] {
         courseName: "Integrated Design Project",
         professor: "Prof. Liu",
         courseCode: "ELEC3848",
-        credits: 4,
+        credits: 6,
         courseDescription: "Capstone design project integrating knowledge from multiple electrical engineering courses."
     )
     
@@ -182,7 +182,7 @@ func createSampleCourses() -> [Course] {
         courseName: "Software Engineering",
         professor: "Prof. Zhao",
         courseCode: "COMP3297",
-        credits: 3,
+        credits: 6,
         courseDescription: "Principles and practices of software engineering including requirements analysis, design, implementation, testing, and maintenance."
     )
     
@@ -213,7 +213,7 @@ func createSampleCourses() -> [Course] {
         courseName: "Fundamentals of Optics",
         professor: "Prof. Yang",
         courseCode: "ELEC2347",
-        credits: 3,
+        credits: 6,
         courseDescription: "Introduction to the principles of optics including geometric optics, wave optics, and optical systems."
     )
     
