@@ -1079,3 +1079,127 @@ extension FirebaseService {
         }
     }
 }
+
+
+// MARK: - 课程评论相关方法
+extension FirebaseService {
+    
+    // 添加课程评论到 Firebase
+    func addCourseComment(courseId: String, content: String, rating: Int, author: User, completion: @escaping (Result<CourseComment, Error>) -> Void) {
+        let commentId = UUID().uuidString
+        let commentData: [String: Any] = [
+            "commentId": commentId,
+            "courseId": courseId,
+            "content": content,
+            "rating": rating,
+            "commentDate": Timestamp(date: Date()),
+            "authorId": author.userId,
+            "authorUsername": author.username
+        ]
+        
+        db.collection("courseComments").document(commentId).setData(commentData) { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                let comment = CourseComment(
+                    commentId: commentId,
+                    content: content,
+                    rating: rating,
+                    author: author
+                )
+                completion(.success(comment))
+            }
+        }
+    }
+    
+    // 获取课程的所有评论
+    func fetchCourseComments(courseId: String, completion: @escaping (Result<[CourseComment], Error>) -> Void) {
+        db.collection("courseComments")
+            .whereField("courseId", isEqualTo: courseId)
+            .order(by: "commentDate", descending: true)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    completion(.success([]))
+                    return
+                }
+                
+                var comments: [CourseComment] = []
+                let group = DispatchGroup()
+                
+                for document in documents {
+                    let data = document.data()
+                    let commentId = data["commentId"] as? String ?? ""
+                    let content = data["content"] as? String ?? ""
+                    let rating = data["rating"] as? Int ?? 5
+                    let authorId = data["authorId"] as? String ?? ""
+                    let authorUsername = data["authorUsername"] as? String ?? ""
+                    
+                    let comment = CourseComment(
+                        commentId: commentId,
+                        content: content,
+                        rating: rating
+                    )
+                    
+                    if let timestamp = data["commentDate"] as? Timestamp {
+                        comment.commentDate = timestamp.dateValue()
+                    }
+                    
+                    // 异步获取作者信息
+                    group.enter()
+                    self.getUserData(userId: authorId) { result in
+                        switch result {
+                        case .success(let author):
+                            comment.author = author
+                        case .failure:
+                            // 如果获取用户信息失败，至少设置用户名
+                            let fallbackAuthor = User(
+                                userId: authorId,
+                                username: authorUsername,
+                                password: "",
+                                email: "",
+                                gender: "Unknown"
+                            )
+                            comment.author = fallbackAuthor
+                        }
+                        group.leave()
+                    }
+                    
+                    comments.append(comment)
+                }
+                
+                group.notify(queue: .main) {
+                    completion(.success(comments))
+                }
+            }
+    }
+    
+    // 删除课程评论
+    func deleteCourseComment(commentId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        db.collection("courseComments").document(commentId).delete { error in
+            if let error = error {
+                completion(.failure(error))
+            } else {
+                completion(.success(()))
+            }
+        }
+    }
+    
+    // 同步版本：获取课程评论
+    func fetchCourseCommentsSync(courseId: String) async throws -> [CourseComment] {
+        try await withCheckedThrowingContinuation { continuation in
+            fetchCourseComments(courseId: courseId) { result in
+                switch result {
+                case .success(let comments):
+                    continuation.resume(returning: comments)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+}
