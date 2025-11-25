@@ -269,6 +269,8 @@
 				DEVELOPMENT_TEAM = S3HA9C3ZC9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Need Camera to support AR";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Need location to campus gps";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need to access your location to provide service.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -298,6 +300,8 @@
 				DEVELOPMENT_TEAM = S3HA9C3ZC9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Need Camera to support AR";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Need location to campus gps";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need to access your location to provide service.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
