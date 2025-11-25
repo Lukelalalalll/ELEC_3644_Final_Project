@@ -2,15 +2,36 @@ import SwiftUI
 
 struct LibraryView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var currentTime = Date()
     
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                VStack(spacing: 8) {
+                    Text(formattedCurrentDate())
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Text(formattedCurrentTimeWithSeconds())
+                        .font(.system(.title2, design: .monospaced))
+                        .fontWeight(.medium)
+                        .foregroundColor(.blue)
+                        .onAppear {
+                            Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                                currentTime = Date()
+                            }
+                        }
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color(.systemBackground))
+                .cornerRadius(12)
+                .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
+                
                 Text("Library Hours")
                     .font(.title2)
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                
                 
                 LazyVStack(spacing: 12) {
                     ForEach(libraryData, id: \.name) { library in
@@ -26,7 +47,7 @@ struct LibraryView: View {
             }
             .padding()
         }
-        .padding(.bottom, 80) // 添加这行来避免被底部 TabBar 遮挡
+        .padding(.bottom, 80)
         .navigationTitle("Library Services")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -44,11 +65,18 @@ struct LibraryView: View {
         }
     }
     
-    private func formattedCurrentTime() -> String {
+    private func formattedCurrentDate() -> String {
         let formatter = DateFormatter()
-        formatter.timeStyle = .short
+        formatter.dateStyle = .full
+        formatter.timeStyle = .none
+        return formatter.string(from: currentTime)
+    }
+    
+    private func formattedCurrentTimeWithSeconds() -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .medium
         formatter.dateStyle = .none
-        return formatter.string(from: Date())
+        return formatter.string(from: currentTime)
     }
 }
 
@@ -57,7 +85,7 @@ struct Library {
     let weekdayHours: String
     let weekendHours: String
     let holidayHours: String
-    let isAlwaysOpen: Bool // For libraries that are always open on holidays (Music Library and Chi Wah Learning Commons)
+    let isAlwaysOpen: Bool
 }
 
 struct LibraryRow: View {
@@ -73,15 +101,33 @@ struct LibraryRow: View {
     
     var body: some View {
         HStack(spacing: 16) {
-            // Status indicator - 增大圆点尺寸到20x20
-            Circle()
-                .fill(isOpen ? Color.green : Color.red)
-                .frame(width: 20, height: 20)
-                .overlay(
+            ZStack {
+                Circle()
+                    .fill(isOpen ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
+                    .frame(width: 32, height: 32)
+                
+                Circle()
+                    .fill(isOpen ? Color.green : Color.red)
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 2)
+                            .shadow(radius: 1)
+                    )
+                
+                if isOpen {
                     Circle()
-                        .stroke(Color.white, lineWidth: 2)
-                        .shadow(radius: 1)
-                )
+                        .stroke(Color.green, lineWidth: 2)
+                        .frame(width: 32, height: 32)
+                        .scaleEffect(1.2)
+                        .opacity(0)
+                        .animation(
+                            Animation.easeInOut(duration: 2)
+                                .repeatForever(autoreverses: false),
+                            value: isOpen
+                        )
+                }
+            }
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(library.name)
@@ -99,15 +145,20 @@ struct LibraryRow: View {
                 .font(.subheadline)
                 .foregroundColor(isOpen ? .green : .red)
                 .fontWeight(.medium)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(isOpen ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
+                )
         }
         .padding()
         .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: .gray.opacity(0.2), radius: 2, x: 0, y: 1)
+        .cornerRadius(16)
+        .shadow(color: .gray.opacity(0.15), radius: 3, x: 0, y: 2)
     }
 }
 
-// Library data - 更新Tin Ka Ping Education Library的工作日时间
 let libraryData: [Library] = [
     Library(name: "Main Library", weekdayHours: "8:30am - 10:00pm", weekendHours: "9:00am - 5:00pm", holidayHours: "Closed", isAlwaysOpen: false),
     Library(name: "Fung Ping Shan Library", weekdayHours: "8:30am - 10:00pm", weekendHours: "9:00am - 5:00pm", holidayHours: "Closed", isAlwaysOpen: false),
@@ -122,25 +173,25 @@ let libraryData: [Library] = [
 
 // Schedule manager to handle opening hours logic
 struct LibraryScheduleManager {
-    // Holiday dates for 2024 (converted from the provided dates)
     static let holidays: [String] = [
-        "2024-01-01", // New Year's Day
-        "2024-02-10", // Lunar New Year's Day
-        "2024-02-11", // Lunar New Year's Day 2
-        "2024-02-12", // Lunar New Year's Day 3
-        "2024-03-29", // Good Friday
-        "2024-03-30", // Day following Good Friday
-        "2024-04-04", // Ching Ming Festival
-        "2024-04-01", // Easter Monday
-        "2024-05-01", // Labour Day
-        "2024-05-15", // Buddha's Birthday
-        "2024-06-10", // Tuen Ng Festival
-        "2024-07-01", // HKSAR Establishment Day
-        "2024-09-18", // Day following Mid-Autumn Festival
-        "2024-10-01", // National Day
-        "2024-10-11", // Chung Yeung Festival
-        "2024-12-25", // Christmas Day
-        "2024-12-26"  // First weekday after Christmas
+        "01-01", // New Year's Day
+        "01-02", // Day following New Year's Day
+        "02-10", // Lunar New Year's Day
+        "02-11", // Lunar New Year's Day 2
+        "02-12", // Lunar New Year's Day 3
+        "03-29", // Good Friday
+        "03-30", // Day following Good Friday
+        "04-04", // Ching Ming Festival
+        "04-01", // Easter Monday
+        "05-01", // Labour Day
+        "05-15", // Buddha's Birthday
+        "06-10", // Tuen Ng Festival
+        "07-01", // HKSAR Establishment Day
+        "09-18", // Day following Mid-Autumn Festival
+        "10-01", // National Day
+        "10-11", // Chung Yeung Festival
+        "12-25", // Christmas Day
+        "12-26"  // First weekday after Christmas
     ]
     
     static func isLibraryOpen(library: Library) -> Bool {
@@ -149,7 +200,7 @@ struct LibraryScheduleManager {
         
         // Check if today is a holiday
         let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.dateFormat = "MM-dd"
         let todayString = dateFormatter.string(from: now)
         
         let isHoliday = holidays.contains(todayString)
@@ -179,7 +230,7 @@ struct LibraryScheduleManager {
         
         // Check if today is a holiday
         let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
+        dateFormatter.dateFormat = "MM-dd"
         let todayString = dateFormatter.string(from: now)
         
         let isHoliday = holidays.contains(todayString)
@@ -197,6 +248,11 @@ struct LibraryScheduleManager {
     private static func isWithinOperatingHours(_ hoursString: String, library: Library) -> Bool {
         guard hoursString != "Closed" else { return false }
         
+        // Special handling for Chi Wah Learning Commons
+        if library.name == "Chi Wah Learning Commons" {
+            return isChiWahOpen()
+        }
+        
         let now = Date()
         let calendar = Calendar.current
         
@@ -206,11 +262,6 @@ struct LibraryScheduleManager {
         
         let openTimeString = components[0]
         let closeTimeString = components[1]
-        
-        // Handle special case for Chi Wah Learning Commons (overnight)
-        if library.name == "Chi Wah Learning Commons" {
-            return isWithinOvernightHours(openTime: openTimeString, closeTime: closeTimeString)
-        }
         
         // Parse open and close times
         guard let openTime = parseTime(openTimeString),
@@ -230,29 +281,30 @@ struct LibraryScheduleManager {
         return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes <= closeTimeInMinutes
     }
     
-    private static func isWithinOvernightHours(openTime: String, closeTime: String) -> Bool {
+    private static func isChiWahOpen() -> Bool {
         let now = Date()
         let calendar = Calendar.current
-        
-        guard let openTime = parseTime(openTime),
-              let closeTime = parseTime(closeTime) else {
-            return false
-        }
-        
         let currentHour = calendar.component(.hour, from: now)
         let currentMinute = calendar.component(.minute, from: now)
         let currentTimeInMinutes = currentHour * 60 + currentMinute
         
-        let openTimeInMinutes = openTime.hour * 60 + openTime.minute
-        let closeTimeInMinutes = closeTime.hour * 60 + closeTime.minute
+        // Chi Wah Learning Commons hours: 08:00 - 06:00 next day
+        // This means it's closed only from 06:00 to 08:00 (2 hours)
+        // Open from 08:00 to 06:00 next day (22 hours)
         
-        // For overnight hours (close time is next day)
-        if closeTimeInMinutes < openTimeInMinutes {
-            // Current time is after open time (same day) OR before close time (next day)
-            return currentTimeInMinutes >= openTimeInMinutes || currentTimeInMinutes <= closeTimeInMinutes
+        let openTimeInMinutes = 8 * 60  // 08:00 = 480 minutes
+        let closeTimeInMinutes = 6 * 60 // 06:00 = 360 minutes
+        
+        if currentTimeInMinutes >= openTimeInMinutes {
+            // After 08:00 on the same day - should be open
+            return true
+        } else if currentTimeInMinutes < closeTimeInMinutes {
+            // Before 06:00 on the same day - this is actually from the previous day's opening
+            // So it should be open (overnight)
+            return true
         } else {
-            // Normal operating hours
-            return currentTimeInMinutes >= openTimeInMinutes && currentTimeInMinutes <= closeTimeInMinutes
+            // Between 06:00 and 08:00 - closed
+            return false
         }
     }
     
