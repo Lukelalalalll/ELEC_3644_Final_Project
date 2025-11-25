@@ -27,10 +27,8 @@ struct CourseDetailView: View {
         users.first
     }
     
-    // 监听 Firebase 评论变化
     private var commentsListener: ListenerRegistration?
     
-    // 计算属性：按钮背景色
     private var submitButtonBackground: Color {
         if newCommentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting {
             return Color.gray
@@ -39,7 +37,6 @@ struct CourseDetailView: View {
         }
     }
     
-    // 计算属性：按钮是否禁用
     private var isSubmitDisabled: Bool {
         newCommentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting
     }
@@ -76,7 +73,7 @@ struct CourseDetailView: View {
             // 调试信息：打印课程时间段
             print("Courses ClassTime Count: \(course.classTimes.count)")
             for (index, classTime) in course.classTimes.enumerated() {
-                print("时间段 \(index): 星期\(classTime.dayOfWeek), \(formatTime(classTime.startTime)) - \(formatTime(classTime.endTime)), 地点: \(classTime.location)")
+                print("Time Period \(index): Week\(classTime.dayOfWeek), \(formatTime(classTime.startTime)) - \(formatTime(classTime.endTime)), Location: \(classTime.location)")
             }
         }
         .onDisappear {
@@ -531,7 +528,6 @@ struct ReviewCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 顶部信息栏
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(comment.author?.username ?? "Unknown User")
@@ -539,7 +535,6 @@ struct ReviewCard: View {
                         .fontWeight(.medium)
                         .foregroundColor(.primary)
                     
-                    // 显示评分
                     HStack(spacing: 2) {
                         ForEach(1...5, id: \.self) { star in
                             Image(systemName: star <= comment.rating ? "star.fill" : "star")

@@ -7,7 +7,6 @@ struct MyCoursesView: View {
     
     private var currentUser: User? {
         guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
-            print("No currentUserId in UserDefaults, please login again")
             return nil
         }
         
@@ -18,7 +17,6 @@ struct MyCoursesView: View {
             let results = try modelContext.fetch(descriptor)
             return results.first
         } catch {
-            print("Failed to fetch current user: \(error)")
             return nil
         }
     }
@@ -164,20 +162,16 @@ struct MyCoursesView: View {
         isLoading = true
         errorMessage = nil
         
-        // 从 Firebase 获取已选课程ID
         FirebaseService.shared.fetchEnrolledCourseIds(for: user.userId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let ids):
-                    print("✅ 从Firebase获取到课程ID: \(ids)")
-                    
                     if ids.isEmpty {
                         self.enrolledCourses = []
                         self.isLoading = false
                         return
                     }
                     
-                    // 从 Firebase 获取课程详细信息
                     self.fetchCourseDetailsFromFirebase(courseIds: ids)
                     
                 case .failure(let error):
@@ -202,33 +196,23 @@ struct MyCoursesView: View {
                 
                 if let error = error {
                     errors.append(error)
-                    print("❌ 获取课程详情失败 \(courseId): \(error)")
                     return
                 }
                 
                 guard let document = document, document.exists,
                       let data = document.data() else {
-                    print("❌ 课程文档不存在: \(courseId)")
                     return
                 }
                 
                 if let course = self.convertToCourse(from: data, id: courseId) {
                     courses.append(course)
-                    print("✅ 成功加载课程: \(course.courseName)")
-                } else {
-                    print("❌ 转换课程失败: \(courseId)")
                 }
             }
         }
         
         group.notify(queue: .main) {
-            if !errors.isEmpty {
-                print("⚠️ 部分课程加载失败: \(errors.count) 个错误")
-            }
-            
             self.enrolledCourses = courses.sorted { $0.courseName < $1.courseName }
             self.isLoading = false
-            print("🎯 最终加载课程数量: \(courses.count)")
         }
     }
     
@@ -236,11 +220,9 @@ struct MyCoursesView: View {
         guard let courseName = data["courseName"] as? String,
               let professor = data["professor"] as? String,
               let courseCode = data["courseCode"] as? String else {
-            print("❌ 缺少必需字段")
             return nil
         }
         
-        // 处理 credits 字段
         let credits: Int
         if let creditsInt = data["credits"] as? Int {
             credits = creditsInt
@@ -248,7 +230,6 @@ struct MyCoursesView: View {
                   let creditsValue = Int(creditsString) {
             credits = creditsValue
         } else {
-            print("❌ credits 字段格式错误")
             return nil
         }
         
@@ -263,22 +244,15 @@ struct MyCoursesView: View {
             courseDescription: courseDescription
         )
         
-        // 转换上课时间 - 修复字符串到数字的转换
         if let classTimes = data["classTimes"] as? [[String: Any]] {
-            print("📅 找到 \(classTimes.count) 个上课时间段")
-            for (index, classTimeData) in classTimes.enumerated() {
-                print("🔍 处理第 \(index + 1) 个时间段: \(classTimeData)")
-                
-                // 修复：处理字符串类型的数字
+            for classTimeData in classTimes {
                 guard let dayOfWeekValue = classTimeData["dayOfWeek"],
                       let startTimeValue = classTimeData["startTime"],
                       let endTimeValue = classTimeData["endTime"],
                       let locationValue = classTimeData["location"] else {
-                    print("❌ 时间段数据存在 nil 值")
                     continue
                 }
                 
-                // 处理 dayOfWeek：可能是 String 或 Int
                 let dayOfWeek: Int
                 if let dayInt = dayOfWeekValue as? Int {
                     dayOfWeek = dayInt
@@ -286,24 +260,17 @@ struct MyCoursesView: View {
                           let dayIntValue = Int(dayString) {
                     dayOfWeek = dayIntValue
                 } else {
-                    print("❌ dayOfWeek 格式错误: \(dayOfWeekValue)")
                     continue
                 }
                 
-                // 处理时间字符串
                 guard let startTimeString = startTimeValue as? String,
                       let endTimeString = endTimeValue as? String,
                       let location = locationValue as? String else {
-                    print("❌ 时间或位置字段格式错误")
                     continue
                 }
                 
-                print("✅ 时间段数据完整: dayOfWeek=\(dayOfWeek), startTime=\(startTimeString), endTime=\(endTimeString), location=\(location)")
-                
                 let startTime = parseTimeString(startTimeString)
                 let endTime = parseTimeString(endTimeString)
-                
-                print("🕒 转换后时间: startTime=\(startTime), endTime=\(endTime)")
                 
                 course.addClassTime(
                     dayOfWeek: dayOfWeek,
@@ -311,26 +278,9 @@ struct MyCoursesView: View {
                     endTime: endTime,
                     location: location
                 )
-                
-                print("✅ 成功添加上课时间到课程对象")
             }
-            
-            // 检查课程对象中的 classTimes
-            print("📋 课程对象中的 classTimes 数量: \(course.classTimes.count)")
-            for (index, ct) in course.classTimes.enumerated() {
-                let formatter = DateFormatter()
-                formatter.dateFormat = "HH:mm"
-                let startStr = formatter.string(from: ct.startTime)
-                let endStr = formatter.string(from: ct.endTime)
-                print("   \(index + 1). 星期\(ct.dayOfWeek) \(startStr)-\(endStr) @ \(ct.location)")
-            }
-        } else {
-            print("❌ 没有找到 classTimes 字段或格式错误")
-            print("   classTimes 数据: \(data["classTimes"] ?? "nil")")
-            print("   classTimes 类型: \(type(of: data["classTimes"]))")
         }
         
-        // 转换作业
         if let homeworks = data["homeworks"] as? [[String: Any]] {
             for homeworkData in homeworks {
                 if let homeworkId = homeworkData["homeworkId"] as? String,
@@ -356,10 +306,8 @@ struct MyCoursesView: View {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         
         if let date = formatter.date(from: timeString) {
-            print("✅ 成功解析时间字符串 '\(timeString)' -> \(date)")
             return date
         } else {
-            print("❌ 无法解析时间字符串 '\(timeString)'")
             return Date()
         }
     }
@@ -375,7 +323,6 @@ struct MyCoursesView: View {
             return
         }
         
-        // 从 Firebase 中删除课程 ID
         FirebaseService.shared.db.collection("users").document(user.userId).updateData([
             "enrolledCourseIds": FieldValue.arrayRemove([course.courseId])
         ]) { error in
@@ -386,7 +333,6 @@ struct MyCoursesView: View {
                     withAnimation {
                         self.enrolledCourses.removeAll { $0.courseId == course.courseId }
                     }
-                    print("✅ Successfully deleted course: \(course.courseName)")
                 }
             }
         }
@@ -416,7 +362,6 @@ struct CourseCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 顶部标题行
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(course.courseId.uppercased())
@@ -431,7 +376,6 @@ struct CourseCardView: View {
                 
                 Spacer()
                 
-                // 删除按钮 - 放在卡片内部右上角
                 if let onDelete = onDelete {
                     Button(action: onDelete) {
                         Image(systemName: "trash")
@@ -462,7 +406,6 @@ struct CourseCardView: View {
                     .cornerRadius(8)
             }
             
-            // 上课时间
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "clock")
                     .font(.caption)

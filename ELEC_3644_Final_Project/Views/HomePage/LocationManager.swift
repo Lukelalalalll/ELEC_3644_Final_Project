@@ -1,10 +1,9 @@
-// LocationManager.swift
 import Foundation
 import CoreLocation
 import MapKit
 
 class LocationManager: NSObject, ObservableObject {
-    static let shared = LocationManager() // 修复：改为 static let
+    static let shared = LocationManager()
     
     private let locationManager = CLLocationManager()
     
@@ -15,7 +14,7 @@ class LocationManager: NSObject, ObservableObject {
         return currentLocation?.hashValue ?? 0
     }
     
-    override init() { // 修复：移除 private，改为普通的 init
+    override init() {
         super.init()
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyBest

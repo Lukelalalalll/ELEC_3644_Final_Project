@@ -1,13 +1,5 @@
-//
-//  CourseData.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by victor 徐 on 21/11/2025.
-//
-
 import Foundation
 
-// 创建8门完整的课程数据
 func createSampleCourses() -> [Course] {
     var courses: [Course] = []
     
@@ -84,7 +76,6 @@ func createSampleCourses() -> [Course] {
     
     courses.append(comp2119)
     
-    // 3. COMP3230 - Computer Architecture
     let comp3230 = Course(
         courseId: "COMP3230",
         courseName: "Computer Architecture",

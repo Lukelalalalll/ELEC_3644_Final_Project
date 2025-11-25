@@ -1,17 +1,3 @@
-//
-//  CourseCommentModel.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/21.
-//
-
-//
-//  CourseCommentModel.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/21.
-//
-
 import SwiftData
 import Foundation
 
@@ -20,12 +6,11 @@ class CourseComment {
     var commentId: String
     var content: String
     var commentDate: Date
-    var rating: Int // 添加评分字段
+    var rating: Int
     
     var author: User?
     var course: Course?
     
-    // Firebase 同步字段
     var authorId: String?
     var courseId: String?
     

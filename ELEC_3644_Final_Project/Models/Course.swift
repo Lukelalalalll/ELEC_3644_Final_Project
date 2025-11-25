@@ -1,10 +1,3 @@
-//
-//  CourseModel.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/21.
-//
-
 import SwiftData
 import Foundation
 
@@ -14,22 +7,18 @@ class Course {
     var courseName: String
     var professor: String
     var courseCode: String
-    var credits: Int // 学分
-    var courseDescription: String // 课程描述
+    var credits: Int
+    var courseDescription: String
     
-    // 关系 - 上课时间列表
     @Relationship(deleteRule: .cascade)
     var classTimes: [ClassTime] = []
     
-    // 关系 - 作业列表
     @Relationship(deleteRule: .cascade)
     var homeworkList: [Homework] = []
     
-    // 关系 - 课程的学生
     @Relationship(deleteRule: .nullify)
     var students: [User] = []
     
-    // 关系 - 课程的评论
     @Relationship(deleteRule: .cascade)
     var comments: [CourseComment] = []
     
@@ -42,19 +31,16 @@ class Course {
         self.courseDescription = courseDescription
     }
     
-    // 便捷方法：添加上课时间
     func addClassTime(dayOfWeek: Int, startTime: Date, endTime: Date, location: String = "") {
         let classTime = ClassTime(dayOfWeek: dayOfWeek, startTime: startTime, endTime: endTime, location: location)
         classTimes.append(classTime)
     }
     
-    // 便捷方法：添加作业
     func addHomework(homeworkId: String, title: String, dueDate: Date, priority: Int = 3) {
         let homework = Homework(homeworkId: homeworkId, title: title, dueDate: dueDate)
         homeworkList.append(homework)
     }
     
-    // 便捷方法：计算平均评分
     func averageRating() -> Double {
         guard !comments.isEmpty else { return 0.0 }
         let total = comments.reduce(0) { $0 + Double($1.rating) }

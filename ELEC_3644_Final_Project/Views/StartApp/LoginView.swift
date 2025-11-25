@@ -106,18 +106,15 @@ struct LoginView: View {
                 case .success(let firebaseUser):
                     FirebaseService.shared.getUserDataAndSyncCourses(
                         userId: firebaseUser.userId,
-                        modelContext: self.modelContext    // 传 modelContext！
+                        modelContext: self.modelContext
                     ) { syncResult in
                         DispatchQueue.main.async {
                             switch syncResult {
                             case .success(let fullUser):
-                                // 登录成功 + 课程已同步到本地 SwiftData
                                 UserDefaults.standard.set(true, forKey: "isLoggedIn")
                                 UserDefaults.standard.set(fullUser.userId, forKey: "currentUserId")
                                 UserDefaults.standard.set(fullUser.username, forKey: "currentUsername")
-                                
-                                print("Login success，已同步 \(fullUser.enrolledCourseIds.count) 门课程")
-                                
+                                                                
                                 self.dismiss()
                                 self.showMainApp = true
                                 

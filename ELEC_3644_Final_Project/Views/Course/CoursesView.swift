@@ -182,18 +182,14 @@ struct CoursesView: View {
                 
                 if let error = error {
                     self.errorMessage = "Failed to load courses: \(error.localizedDescription)"
-                    print("❌ Firebase 加载错误: \(error)")
                     return
                 }
                 
                 guard let documents = snapshot?.documents else {
                     self.errorMessage = "No courses found"
-                    print("❌ 没有找到任何课程文档")
                     return
                 }
-                
-                print("✅ 从 Firebase 加载到 \(documents.count) 个课程文档")
-                
+                                
                 var courses: [Course] = []
                 
                 for document in documents {
@@ -204,9 +200,7 @@ struct CoursesView: View {
                 }
                 
                 self.allCourses = courses.sorted { $0.courseName < $1.courseName }
-                print("🎯 最终加载课程数量: \(courses.count)")
                 
-                // 初始筛选（如果有搜索文本）
                 if !self.searchText.isEmpty {
                     self.filterCourses()
                 }
@@ -218,11 +212,9 @@ struct CoursesView: View {
         guard let courseName = data["courseName"] as? String,
               let professor = data["professor"] as? String,
               let courseCode = data["courseCode"] as? String else {
-            print("❌ 缺少必需字段")
             return nil
         }
         
-        // 处理 credits 字段
         let credits: Int
         if let creditsInt = data["credits"] as? Int {
             credits = creditsInt
@@ -230,7 +222,6 @@ struct CoursesView: View {
                   let creditsValue = Int(creditsString) {
             credits = creditsValue
         } else {
-            print("❌ credits 字段格式错误")
             return nil
         }
         
@@ -245,22 +236,16 @@ struct CoursesView: View {
             courseDescription: courseDescription
         )
         
-        // 转换上课时间 - 修复字符串到数字的转换
         if let classTimes = data["classTimes"] as? [[String: Any]] {
-            print("📅 找到 \(classTimes.count) 个上课时间段")
             for (index, classTimeData) in classTimes.enumerated() {
-                print("🔍 处理第 \(index + 1) 个时间段: \(classTimeData)")
                 
-                // 修复：处理字符串类型的数字
                 guard let dayOfWeekValue = classTimeData["dayOfWeek"],
                       let startTimeValue = classTimeData["startTime"],
                       let endTimeValue = classTimeData["endTime"],
                       let locationValue = classTimeData["location"] else {
-                    print("❌ 时间段数据存在 nil 值")
                     continue
                 }
                 
-                // 处理 dayOfWeek：可能是 String 或 Int
                 let dayOfWeek: Int
                 if let dayInt = dayOfWeekValue as? Int {
                     dayOfWeek = dayInt
@@ -268,25 +253,19 @@ struct CoursesView: View {
                           let dayIntValue = Int(dayString) {
                     dayOfWeek = dayIntValue
                 } else {
-                    print("❌ dayOfWeek 格式错误: \(dayOfWeekValue)")
                     continue
                 }
                 
-                // 处理时间字符串
                 guard let startTimeString = startTimeValue as? String,
                       let endTimeString = endTimeValue as? String,
                       let location = locationValue as? String else {
-                    print("❌ 时间或位置字段格式错误")
                     continue
                 }
                 
-                print("✅ 时间段数据完整: dayOfWeek=\(dayOfWeek), startTime=\(startTimeString), endTime=\(endTimeString), location=\(location)")
-                
+
                 let startTime = parseTimeString(startTimeString)
                 let endTime = parseTimeString(endTimeString)
-                
-                print("🕒 转换后时间: startTime=\(startTime), endTime=\(endTime)")
-                
+                                
                 course.addClassTime(
                     dayOfWeek: dayOfWeek,
                     startTime: startTime,
@@ -294,7 +273,6 @@ struct CoursesView: View {
                     location: location
                 )
                 
-                print("✅ 成功添加上课时间到课程对象")
             }
             
             // 检查课程对象中的 classTimes
@@ -321,10 +299,8 @@ struct CoursesView: View {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         
         if let date = formatter.date(from: timeString) {
-            print("✅ 成功解析时间字符串 '\(timeString)' -> \(date)")
             return date
         } else {
-            print("❌ 无法解析时间字符串 '\(timeString)'")
             return Date()
         }
     }
@@ -355,13 +331,11 @@ struct CoursesView: View {
     }
 }
 
-// 使用类似 AddCourseView 的课程行视图
 struct CourseSearchRowView: View {
     let course: Course
     
     var body: some View {
         HStack(spacing: 12) {
-            // 课程信息
             VStack(alignment: .leading, spacing: 6) {
                 Text(course.courseName)
                     .font(.headline)

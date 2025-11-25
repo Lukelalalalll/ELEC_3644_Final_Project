@@ -267,11 +267,10 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 locationManager.startUpdatingLocation()
-                // 修复：确保正确的初始页面
                 currentPage = calculateTodayPage()
                 selectedDate = Date()
                 resetTimer()
-                loadUserCoursesFromFirebase() // 首次加载时从Firebase加载课程
+                loadUserCoursesFromFirebase()
             }
             .onDisappear {
                 timer?.invalidate()
@@ -279,17 +278,13 @@ struct HomeView: View {
         }
     }
     
-    // MARK: - 数据加载方法
-    
-    // 从Firebase加载用户课程
+
     private func loadUserCoursesFromFirebase() {
         guard let userId = currentUserId else {
-            print("❌ 没有当前用户ID")
             return
         }
         
         isLoading = true
-        print("🔄 从Firebase加载用户课程，用户ID: \(userId)")
         
         FirebaseService.shared.fetchEnrolledCourseIds(for: userId) { result in
             DispatchQueue.main.async {
@@ -297,12 +292,10 @@ struct HomeView: View {
                 
                 switch result {
                 case .success(let courseIds):
-                    print("✅ 从Firebase获取到课程ID: \(courseIds)")
                     self.enrolledCourseIds = courseIds
                     self.fetchCourseDetailsFromFirebase(courseIds: courseIds)
                     
                 case .failure(let error):
-                    print("❌ 从Firebase加载课程失败: \(error.localizedDescription)")
                     self.userCourses = []
                 }
             }
@@ -323,33 +316,27 @@ struct HomeView: View {
                 
                 if let error = error {
                     errors.append(error)
-                    print("❌ 获取课程详情失败 \(courseId): \(error)")
                     return
                 }
                 
                 guard let document = document, document.exists,
                       let data = document.data() else {
-                    print("❌ 课程文档不存在: \(courseId)")
                     return
                 }
                 
                 if let simpleCourse = self.convertToSimpleCourse(from: data, id: courseId) {
                     courses.append(contentsOf: simpleCourse)
-                    print("✅ 成功加载课程: \(courseId)")
                 } else {
-                    print("❌ 转换课程失败: \(courseId)")
                 }
             }
         }
         
         group.notify(queue: .main) {
             if !errors.isEmpty {
-                print("⚠️ 部分课程加载失败: \(errors.count) 个错误")
             }
             
             self.userCourses = courses
             self.isLoading = false
-            print("🎯 最终加载SimpleCourse数量: \(courses.count)")
         }
     }
     
@@ -357,11 +344,9 @@ struct HomeView: View {
         guard let courseName = data["courseName"] as? String,
               let professor = data["professor"] as? String,
               let courseCode = data["courseCode"] as? String else {
-            print("❌ 缺少必需字段")
             return nil
         }
         
-        // 处理 credits 字段
         let credits: Int
         if let creditsInt = data["credits"] as? Int {
             credits = creditsInt
@@ -369,28 +354,21 @@ struct HomeView: View {
                   let creditsValue = Int(creditsString) {
             credits = creditsValue
         } else {
-            print("❌ credits 字段格式错误")
             return nil
         }
         
         var simpleCourses: [SimpleCourse] = []
         
-        // 转换上课时间
         if let classTimes = data["classTimes"] as? [[String: Any]] {
-            print("📅 找到 \(classTimes.count) 个上课时间段")
             for (index, classTimeData) in classTimes.enumerated() {
-                print("🔍 处理第 \(index + 1) 个时间段: \(classTimeData)")
                 
-                // 处理 dayOfWeek：可能是 String 或 Int
                 guard let dayOfWeekValue = classTimeData["dayOfWeek"],
                       let startTimeValue = classTimeData["startTime"],
                       let endTimeValue = classTimeData["endTime"],
                       let locationValue = classTimeData["location"] else {
-                    print("❌ 时间段数据存在 nil 值")
                     continue
                 }
                 
-                // 处理 dayOfWeek：可能是 String 或 Int
                 let dayOfWeek: Int
                 if let dayInt = dayOfWeekValue as? Int {
                     dayOfWeek = dayInt
@@ -398,26 +376,19 @@ struct HomeView: View {
                           let dayIntValue = Int(dayString) {
                     dayOfWeek = dayIntValue
                 } else {
-                    print("❌ dayOfWeek 格式错误: \(dayOfWeekValue)")
                     continue
                 }
                 
-                // 处理时间字符串
                 guard let startTimeString = startTimeValue as? String,
                       let endTimeString = endTimeValue as? String,
                       let location = locationValue as? String else {
-                    print("❌ 时间或位置字段格式错误")
                     continue
                 }
                 
-                print("✅ 时间段数据完整: dayOfWeek=\(dayOfWeek), startTime=\(startTimeString), endTime=\(endTimeString), location=\(location)")
                 
                 let startTime = parseTimeString(startTimeString)
                 let endTime = parseTimeString(endTimeString)
                 
-                print("🕒 转换后时间: startTime=\(startTime), endTime=\(endTime)")
-                
-                // 转换为 Calendar 的星期格式 (1=周日, 2=周一, ..., 7=周六)
                 let calendarWeekday: Int
                 switch dayOfWeek {
                 case 1: calendarWeekday = 2 // 周一 -> 2
@@ -432,13 +403,11 @@ struct HomeView: View {
                 
                 let weekday = Weekday(rawValue: calendarWeekday)
                 
-                // 格式化时间显示
                 let timeFormatter = DateFormatter()
                 timeFormatter.dateFormat = "HH:mm"
                 let startTimeStr = timeFormatter.string(from: startTime)
                 let endTimeStr = timeFormatter.string(from: endTime)
                 
-                // 修复：dayNames 数组索引与 calendarWeekday 对齐
                 let dayNames = ["", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
                 let dayName = dayNames.indices.contains(calendarWeekday) ? dayNames[calendarWeekday] : "Unknown"
                 
@@ -455,10 +424,9 @@ struct HomeView: View {
                     endTime: endTime
                 )
                 simpleCourses.append(simpleCourse)
-                print("✅ 添加课程时间段: \(courseCode) - \(dayName) \(startTimeStr)-\(endTimeStr) (原始星期: \(dayOfWeek), 调整后: \(calendarWeekday))")
+
             }
         } else {
-            print("❌ 没有找到 classTimes 字段或格式错误")
         }
         
         return simpleCourses
@@ -470,55 +438,41 @@ struct HomeView: View {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         
         if let date = formatter.date(from: timeString) {
-            print("✅ 成功解析时间字符串 '\(timeString)' -> \(date)")
             return date
         } else {
-            print("❌ 无法解析时间字符串 '\(timeString)'")
             return Date()
         }
     }
-    
-    // MARK: - 日期计算方法
-    
-    // 计算当前周的日期
+
     private var weekDates: [Date] {
         let calendar = Calendar.current
         let today = Date()
-        // 修正：使用正确的周开始（周日开始）
         let startOfWeek = calendar.date(from: calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today))!
         return (0..<7).map { calendar.date(byAdding: .day, value: $0, to: startOfWeek)! }
     }
     
-    // 修复：计算今天对应的页面索引
     func calculateTodayPage() -> Int {
         let calendar = Calendar.current
         let weekdayNum = calendar.component(.weekday, from: Date())
-        // 修正：Calendar的weekday从1(周日)到7(周六)
-        // 我们的页面索引应该是0(周日)到6(周六)
-        // 直接返回 weekdayNum - 1 是正确的
         return weekdayNum - 1
     }
     
-    // 根据页面索引获取对应的日期
     private func dateForPage(_ page: Int) -> Date {
         return weekDates[page]
     }
     
-    // 格式化日期显示
     private func formattedDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM d"
         return formatter.string(from: date)
     }
     
-    // 获取星期几对应的Weekday枚举
     private func weekdayForDate(_ date: Date) -> Weekday {
         let calendar = Calendar.current
         let weekdayNum = calendar.component(.weekday, from: date)
         return Weekday(rawValue: weekdayNum) ?? .sunday
     }
     
-    // 检查是否为假期
     private func isHoliday(_ date: Date) -> Bool {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MM-dd"
@@ -526,7 +480,6 @@ struct HomeView: View {
         return hongKongHolidays.contains(dateString)
     }
     
-    // 按星期几分组课程
     private var coursesByWeekday: [Weekday: [SimpleCourse]] {
         var result: [Weekday: [SimpleCourse]] = [:]
         
@@ -538,7 +491,6 @@ struct HomeView: View {
             result[weekday]?.append(course)
         }
         
-        // 按开始时间排序
         for (weekday, courses) in result {
             result[weekday] = courses.sorted { $0.startTime < $1.startTime }
         }
@@ -546,7 +498,6 @@ struct HomeView: View {
         return result
     }
     
-    // 获取指定日期的课程（如果是假期则返回空数组）
     private func coursesForDate(_ date: Date) -> [SimpleCourse] {
         if isHoliday(date) {
             return []
@@ -568,7 +519,7 @@ struct HomeView: View {
     }
 }
 
-// 其他视图保持不变...
+
 struct SimpleCourseDetailView: View {
     let course: SimpleCourse
     

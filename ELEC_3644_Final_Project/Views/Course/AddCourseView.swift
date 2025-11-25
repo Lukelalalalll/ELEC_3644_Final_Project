@@ -8,7 +8,6 @@ struct AddCourseView: View {
     
     private var currentUser: User? {
         guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
-            print("UserDefaults doesn't contain currentUserId，please login first")
             return nil
         }
         
@@ -21,14 +20,11 @@ struct AddCourseView: View {
         do {
             let results = try modelContext.fetch(descriptor)
             if let user = results.first {
-                print("find current login user → userId: \(user.userId), username: \(user.username)")
                 return user
             } else {
-                print("According to currentUserId=\(currentUserId) in local SwiftData cannot find user")
                 return nil
             }
         } catch {
-            print("Fetch current user failed: \(error)")
             return nil
         }
     }
@@ -45,7 +41,6 @@ struct AddCourseView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // 搜索栏
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
@@ -59,8 +54,7 @@ struct AddCourseView: View {
             .cornerRadius(10)
             .padding(.horizontal)
             .padding(.top)
-            
-            // 课程列表
+
             List {
                 if isInitialLoading {
                     ProgressView("Loading courses...")
@@ -174,17 +168,13 @@ struct AddCourseView: View {
                 
                 if let error = error {
                     self.errorMessage = "Failed to load courses: \(error.localizedDescription)"
-                    print("❌ Firebase 加载错误: \(error)")
                     return
                 }
                 
                 guard let documents = snapshot?.documents else {
                     self.errorMessage = "No courses found"
-                    print("❌ 没有找到任何课程文档")
                     return
                 }
-                
-                print("✅ 从 Firebase 加载到 \(documents.count) 个课程文档")
                 
                 var courses: [Course] = []
                 
@@ -196,7 +186,6 @@ struct AddCourseView: View {
                 }
                 
                 self.allCourses = courses.sorted { $0.courseName < $1.courseName }
-                print("🎯 最终加载课程数量: \(courses.count)")
             }
         }
     }
@@ -228,8 +217,7 @@ struct AddCourseView: View {
             credits: credits,
             courseDescription: courseDescription
         )
-        
-        // 转换上课时间
+
         if let classTimes = data["classTimes"] as? [[String: Any]] {
             for classTimeData in classTimes {
                 if let dayOfWeek = classTimeData["dayOfWeek"] as? Int,
@@ -275,33 +263,26 @@ struct AddCourseView: View {
     
     private func addCourseToUser(_ course: Course) {
         guard let user = currentUser else {
-            errorMessage = "无法获取当前用户信息，请重新登录"
+            errorMessage = "Unable to get current user information, please log in again"
             return
         }
         
-        // 设置当前课程的加载状态
         loadingCourseIds.insert(course.courseId)
         
-        print("开始添加课程: \(course.courseId) 给用户: \(user.userId)")
-        
-        // 1. 检查 Firebase 是否已经选过这门课
         FirebaseService.shared.fetchEnrolledCourseIds(for: user.userId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let enrolledCourseIds):
                     if enrolledCourseIds.contains(course.courseId) {
-                        print("课程已存在，跳过添加")
                         self.loadingCourseIds.remove(course.courseId)
                         self.addedCourseName = course.courseName
                         self.showConfirmation = true
                         return
                     }
                     
-                    // 2. 添加到 Firebase
                     self.addCourseToFirebase(course, user: user)
                     
                 case .failure(let error):
-                    print("获取已选课程失败，尝试直接添加: \(error)")
                     self.addCourseToFirebase(course, user: user)
                 }
             }
@@ -314,42 +295,33 @@ struct AddCourseView: View {
             courseId: course.courseId
         ) { result in
             DispatchQueue.main.async {
-                // 移除加载状态
                 self.loadingCourseIds.remove(course.courseId)
                 
                 switch result {
                 case .success:
-                    print("Firebase add course success")
-                    
-                    // 更新本地 SwiftData
                     if !user.enrolledCourseIds.contains(course.courseId) {
                         user.enrolledCourseIds.append(course.courseId)
                     }
                     
                     do {
                         try self.modelContext.save()
-                        print("SwiftData store success")
                         self.addedCourseName = course.courseName
                         self.showConfirmation = true
                         
-                        // 清空搜索
                         self.searchText = ""
                         self.filteredCourses = []
                     } catch {
-                        print("SwiftData 保存失败: \(error)")
-                        self.errorMessage = "本地保存失败"
+                        self.errorMessage = "Local save failed"
                     }
                     
                 case .failure(let error):
-                    print("Firebase 添加课程失败: \(error)")
-                    self.errorMessage = "添加失败：\(error.localizedDescription)"
+                    self.errorMessage = "Add failed：\(error.localizedDescription)"
                 }
             }
         }
     }
 }
 
-// 独立的课程行视图，避免状态冲突
 struct CourseRowView: View {
     let course: Course
     let isLoading: Bool
@@ -357,7 +329,6 @@ struct CourseRowView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // 课程信息
             VStack(alignment: .leading, spacing: 6) {
                 Text(course.courseName)
                     .font(.headline)
@@ -378,7 +349,6 @@ struct CourseRowView: View {
             
             Spacer()
             
-            // 添加按钮
             Button(action: onAdd) {
                 if isLoading {
                     ProgressView()

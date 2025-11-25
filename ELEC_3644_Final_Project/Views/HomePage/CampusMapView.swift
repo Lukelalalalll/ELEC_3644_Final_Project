@@ -29,14 +29,12 @@ struct CampusMapView: View {
 
     private var baseMapView: some View {
         Map(position: $cameraPosition) {
-            // 用户位置
             if let userLocation = locationManager.currentLocation {
                 Annotation("My Location", coordinate: userLocation.coordinate) {
                     UserLocationMarker()
                 }
             }
             
-            // 校园建筑
             ForEach(hkuBuildings) { building in
                 Annotation("", coordinate: building.coordinate) {
                     BuildingAnnotationView(

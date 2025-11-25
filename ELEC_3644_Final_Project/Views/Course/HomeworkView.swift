@@ -154,7 +154,6 @@ struct HomeworkView: View {
                         return
                     }
                     
-                    // 从 Firebase 获取所有已选课程的详细信息，包括作业
                     self.fetchCoursesWithHomeworks(courseIds: courseIds)
                     
                 case .failure(let error):
@@ -176,31 +175,24 @@ struct HomeworkView: View {
                     completedRequests += 1
                     
                     if let error = error {
-                        print("❌ Failed to fetch course \(courseId): \(error)")
                     } else if let document = document, document.exists {
                         if let courseData = document.data(),
                            let homeworksData = courseData["homeworks"] as? [[String: Any]] {
                             
-                            print("✅ Found \(homeworksData.count) homeworks in course \(courseId)")
                             
-                            // 解析作业数据
                             for homeworkData in homeworksData {
                                 if let homework = self.parseHomework(from: homeworkData, courseId: courseId, courseData: courseData) {
                                     allHomeworks.append(homework)
                                 }
                             }
                         } else {
-                            print("⚠️ No homeworks found in course \(courseId)")
                         }
                     } else {
-                        print("❌ Course document \(courseId) does not exist")
                     }
                     
-                    // 当所有课程请求都完成时
                     if completedRequests == courseIds.count {
                         self.userHomeworks = allHomeworks.sorted { $0.dueDate < $1.dueDate }
                         self.isLoading = false
-                        print("🎯 Loaded \(allHomeworks.count) homeworks from \(courseIds.count) courses")
                     }
                 }
             }
@@ -211,33 +203,27 @@ struct HomeworkView: View {
         guard let homeworkId = homeworkData["homeworkId"] as? String,
               let title = homeworkData["title"] as? String,
               let dueDateString = homeworkData["dueDate"] as? String else {
-            print("❌ Missing required homework fields")
             return nil
         }
         
-        // 解析日期
         let dateFormatter = ISO8601DateFormatter()
         guard let dueDate = dateFormatter.date(from: dueDateString) else {
-            print("❌ Failed to parse due date: \(dueDateString)")
             return nil
         }
         
-        // 获取课程信息
         let courseName = courseData["courseName"] as? String ?? "Unknown Course"
         let courseCode = courseData["courseCode"] as? String ?? "Unknown Code"
         let professor = courseData["professor"] as? String ?? "Unknown Professor"
         
-        // 创建课程对象（简化版，只包含必要信息）
         let course = Course(
             courseId: courseId,
             courseName: courseName,
             professor: professor,
             courseCode: courseCode,
-            credits: 0, // 作业显示不需要学分信息
+            credits: 0,
             courseDescription: ""
         )
         
-        // 创建作业对象
         let homework = Homework(
             homeworkId: homeworkId,
             title: title,
@@ -245,7 +231,6 @@ struct HomeworkView: View {
             course: course
         )
         
-        print("✅ Parsed homework: \(title) due \(dueDate) for course \(courseName)")
         return homework
     }
 }
@@ -292,7 +277,6 @@ struct HomeworkCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                // 课程代码显示在上面并加粗
                 if let course = homework.course {
                     Text(course.courseCode)
                         .font(.headline)
@@ -312,7 +296,6 @@ struct HomeworkCardView: View {
                     .cornerRadius(6)
             }
             
-            // 作业标题显示在下面
             Text(homework.title)
                 .font(.subheadline)
                 .fontWeight(.medium)

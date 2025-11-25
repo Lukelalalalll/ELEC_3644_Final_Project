@@ -1,9 +1,3 @@
-//
-//  HKUBuilding.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/26.
-//
 import Foundation
 import CoreLocation
 import SwiftUI
@@ -16,7 +10,6 @@ struct HKUBuilding: Identifiable {
     let iconName: String
     let color: Color
     
-    // 香港大学主要建筑坐标
     static let allBuildings: [HKUBuilding] = [
         HKUBuilding(
             name: "Main Building",

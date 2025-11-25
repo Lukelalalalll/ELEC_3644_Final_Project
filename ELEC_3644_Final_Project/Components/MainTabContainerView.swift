@@ -1,10 +1,3 @@
-//
-//  MainTabContainerView.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/20.
-//
-
 import SwiftUI
 
 struct MainTabContainerView: View {
@@ -14,11 +7,9 @@ struct MainTabContainerView: View {
     
     var body: some View {
         ZStack {
-            // 页面内容
             currentPage
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             
-            // 高级毛玻璃底部 TabBar
             VStack {
                 Spacer()
                 
@@ -44,15 +35,12 @@ struct MainTabContainerView: View {
                         .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 4)
                 )
                 .padding(.horizontal, 16)
-                // 移除负的底部间距，使用安全区域
                 .padding(.bottom, 0)
             }
-            // 忽略安全区域，让 TabBar 延伸到屏幕底部
             .ignoresSafeArea(.container, edges: .bottom)
         }
         .ignoresSafeArea(.keyboard)
         .onAppear {
-            // 应用启动时强制刷新数据
             if !hasRefreshedOnAppear {
                 Task {
                     await refreshAllData()
@@ -61,7 +49,6 @@ struct MainTabContainerView: View {
             }
         }
         .onChange(of: selectedTab) { oldValue, newValue in
-            // 切换到 Posts 标签时刷新数据
             if newValue == 1 {
                 Task {
                     await refreshPostsData()
@@ -81,17 +68,13 @@ struct MainTabContainerView: View {
         }
     }
     
-    // 刷新所有数据
     private func refreshAllData() async {
         print("应用启动，开始刷新所有数据...")
         await refreshPostsData()
-        // 可以在这里添加刷新课程数据等其他刷新逻辑
     }
     
-    // 刷新帖子数据
     private func refreshPostsData() async {
         print("刷新帖子数据...")
-        // 设置强制刷新标志，PostsFeedView 会在 onAppear 时检测这个标志
         UserDefaults.standard.set(true, forKey: "forceRefreshPosts")
     }
 }
@@ -111,7 +94,6 @@ struct TabBarButton: View {
         }) {
             VStack(spacing: 4) {
                 ZStack {
-                    // 液态玻璃选中效果
                     if selectedTab == index {
                         RoundedRectangle(cornerRadius: 30)
                             .fill(.ultraThinMaterial)
@@ -125,7 +107,6 @@ struct TabBarButton: View {
                             .offset(y: 4)
                     }
                     
-                    // 图标
                     Image(systemName: icon)
                         .font(.system(size: 24, weight: .medium))
                         .foregroundColor(selectedTab == index ? .accentColor : .primary.opacity(0.7))
@@ -134,7 +115,6 @@ struct TabBarButton: View {
                 }
                 .frame(height: 24)
                 
-                // 标题 - 确保完整显示
                 Text(title)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(selectedTab == index ? .accentColor : .primary.opacity(0.7))
