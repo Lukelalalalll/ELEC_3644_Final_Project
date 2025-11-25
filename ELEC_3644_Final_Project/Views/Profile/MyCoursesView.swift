@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseFirestore
 
 struct MyCoursesView: View {
     @Environment(\.modelContext) private var modelContext
@@ -25,82 +26,134 @@ struct MyCoursesView: View {
     @State private var enrolledCourses: [Course] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var showingAddCourse = false
+    @State private var showingDeleteAlert = false
+    @State private var courseToDelete: Course?
     
     var body: some View {
-        NavigationView {
-            VStack {
-                if isLoading {
-                    ProgressView("Loading courses...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let errorMessage = errorMessage {
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 50))
-                            .foregroundColor(.orange)
-                        Text("Failed to load")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                        Text(errorMessage)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        
-                        Button("Retry") {
-                            loadEnrolledCourses()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
+        VStack {
+            if isLoading {
+                ProgressView("Loading courses...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if enrolledCourses.isEmpty {
-                    VStack(spacing: 20) {
-                        Image(systemName: "book.closed")
-                            .font(.system(size: 60))
-                            .foregroundColor(.gray)
-                        Text("No courses yet")
-                            .font(.title2)
-                            .fontWeight(.medium)
-                        Text("You haven't added any courses")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                        
-                        NavigationLink(destination: AddCourseView()) {
-                            Label("Add Course", systemImage: "plus")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.accentColor)
-                                .cornerRadius(12)
-                        }
-                        .padding(.horizontal, 40)
+            } else if let errorMessage = errorMessage {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(.orange)
+                    Text("Failed to load")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text(errorMessage)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("Retry") {
+                        loadEnrolledCourses()
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List {
-                        ForEach(enrolledCourses) { course in
-                            CourseCardView(course: course)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                        }
-                    }
-                    .listStyle(.plain)
+                    .buttonStyle(.borderedProminent)
                 }
-            }
-            .navigationTitle("My Courses")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: AddCourseView()) {
-                        Image(systemName: "plus")
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if enrolledCourses.isEmpty {
+                VStack(spacing: 20) {
+                    Image(systemName: "book.closed")
+                        .font(.system(size: 60))
+                        .foregroundColor(.gray)
+                    Text("No courses yet")
+                        .font(.title2)
+                        .fontWeight(.medium)
+                    Text("You haven't added any courses")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                    
+                    Button {
+                        showingAddCourse = true
+                    } label: {
+                        Label("Add Course", systemImage: "plus")
                             .font(.headline)
-                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: .infinity)
+                            .background(Color.accentColor)
+                            .cornerRadius(30)
                     }
+                    .padding(.horizontal, 40)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(enrolledCourses) { course in
+                        NavigationLink(destination: CourseDetailView(course: course)) {
+                            CourseCardView(
+                                course: course,
+                                onDelete: {
+                                    courseToDelete = course
+                                    showingDeleteAlert = true
+                                }
+                            )
+                        }
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .listStyle(.plain)
+                Spacer()
+                    .frame(height: 60)
+            }
+        }
+        .navigationTitle("My Courses")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showingAddCourse = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.headline)
+                        .fontWeight(.semibold)
                 }
             }
         }
+        .sheet(isPresented: $showingAddCourse) {
+            NavigationStack {
+                AddCourseView()
+            }
+        }
+        .alert("Delete Course", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) {
+                courseToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let course = courseToDelete {
+                    deleteCourse(course)
+                }
+            }
+        } message: {
+            if let course = courseToDelete {
+                Text("Are you sure you want to remove \"\(course.courseName)\" from your courses?")
+            }
+        }
         .onAppear(perform: loadEnrolledCourses)
-        .refreshable { loadEnrolledCourses() }
+        .refreshable {
+            await refreshCourses()
+        }
+    }
+    
+    private func refreshCourses() async {
+        // 模拟加载延迟
+        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒延迟
+        
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                self.loadEnrolledCourses()
+                // 假设加载需要一些时间，这里等待加载完成
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    continuation.resume()
+                }
+            }
+        }
     }
     
     private func loadEnrolledCourses() {
@@ -129,10 +182,35 @@ struct MyCoursesView: View {
             }
         }
     }
+    
+    private func deleteCourse(_ course: Course) {
+        guard let user = currentUser else {
+            errorMessage = "Unable to get user info, please login again"
+            return
+        }
+        
+        // 从 Firebase 中删除课程 ID
+        FirebaseService.shared.db.collection("users").document(user.userId).updateData([
+            "enrolledCourseIds": FieldValue.arrayRemove([course.courseId])
+        ]) { error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    self.errorMessage = "Failed to delete course: \(error.localizedDescription)"
+                } else {
+                    // 从本地列表中删除课程
+                    withAnimation {
+                        self.enrolledCourses.removeAll { $0.courseId == course.courseId }
+                    }
+                    print("✅ Successfully deleted course: \(course.courseName)")
+                }
+            }
+        }
+    }
 }
 
 struct CourseCardView: View {
     let course: Course
+    var onDelete: (() -> Void)?
     
     private var classTimesText: String {
         if course.classTimes.isEmpty { return "No schedule yet" }
@@ -153,14 +231,34 @@ struct CourseCardView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(course.courseId.uppercased())
-                .font(.title2)
-                .fontWeight(.bold)
-                .foregroundColor(.primary)
-            
-            Text(course.courseName)
-                .font(.title3)
-                .foregroundColor(.primary)
+            // 顶部标题行
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(course.courseId.uppercased())
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                    
+                    Text(course.courseName)
+                        .font(.title3)
+                        .foregroundColor(.primary)
+                }
+                
+                Spacer()
+                
+                // 删除按钮 - 放在卡片内部右上角
+                if let onDelete = onDelete {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.red)
+                            .frame(width: 32, height: 32)
+                            .background(Color.red.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
             
             HStack {
                 Text(course.professor)
@@ -218,7 +316,7 @@ struct CourseCardView: View {
         }
         .padding(20)
         .background(Color(.systemBackground))
-        .cornerRadius(30)                    
+        .cornerRadius(30)
         .overlay(
             RoundedRectangle(cornerRadius: 30)
                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
@@ -228,6 +326,8 @@ struct CourseCardView: View {
 }
 
 #Preview {
-    MyCoursesView()
-        .modelContainer(for: [User.self, Course.self], inMemory: true)
+    NavigationStack {
+        MyCoursesView()
+            .modelContainer(for: [User.self, Course.self], inMemory: true)
+    }
 }
