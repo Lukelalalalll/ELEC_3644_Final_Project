@@ -1,4 +1,3 @@
-
 import SwiftUI
 import SwiftData
 
@@ -12,116 +11,161 @@ struct CourseDetailView: View {
     @Query private var users: [User]
     
     private var currentUser: User? {
-        users.first // 假设第一个用户是当前登录用户
+        users.first
     }
-    
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // 课程基本信息
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(course.courseName)
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
                     Text(course.courseCode)
                         .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                    
+                    Text(course.courseName)
+                        .font(.headline)
                         .foregroundColor(.secondary)
                     
-                    HStack {
-                        Image(systemName: "person.fill")
-                        Text("Professor: \(course.professor)")
+                    HStack(spacing: 20) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.fill")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                            Text(course.professor)
+                                .font(.subheadline)
+                        }
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: "number.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.caption)
+                            Text("\(course.credits) credits")
+                                .font(.subheadline)
+                        }
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: "star.fill")
+                                .foregroundColor(.yellow)
+                                .font(.caption)
+                            Text(String(format: "%.1f", course.averageRating()))
+                                .font(.subheadline)
+                            Text("(\(course.comments.count))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
-                    .font(.headline)
-                    
-                    HStack {
-                        Image(systemName: "number.circle.fill")
-                        Text("Credits: \(course.credits)")
-                    }
-                    .font(.subheadline)
-                    
-                    // 平均评分
-                    HStack {
-                        Image(systemName: "star.fill")
-                            .foregroundColor(.yellow)
-                        Text(String(format: "%.1f", course.averageRating()))
-                        Text("(\(course.comments.count) reviews)")
-                    }
-                    .font(.subheadline)
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                
-                // 课程描述
-                VStack(alignment: .leading, spacing: 10) {
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(.systemBackground))
+                .cornerRadius(30)
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Course Description")
                         .font(.headline)
+                        .foregroundColor(.primary)
                     
                     Text(course.courseDescription)
                         .font(.body)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.secondary)
+                        .lineSpacing(4)
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
-                
-                // 上课时间
-                VStack(alignment: .leading, spacing: 10) {
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(.systemBackground))
+                .cornerRadius(30)
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+
+                VStack(alignment: .leading, spacing: 12) {
                     Text("Class Schedule")
                         .font(.headline)
+                        .foregroundColor(.primary)
                     
-                    ForEach(course.classTimes, id: \.dayOfWeek) { classTime in
-                        HStack {
-                            Image(systemName: "clock.fill")
-                            Text(classTime.timeString())
-                            Spacer()
-                            Text(classTime.location)
-                                .foregroundColor(.secondary)
+                    VStack(spacing: 12) {
+                        ForEach(course.classTimes, id: \.dayOfWeek) { classTime in
+                            HStack {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "clock.fill")
+                                        .foregroundColor(.orange)
+                                        .frame(width: 20)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(classTime.timeString())
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary)
+                                        Text(classTime.location)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Text(classTime.dayName())
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.blue.opacity(0.1))
+                                    .foregroundColor(.blue)
+                                    .cornerRadius(20)
+                            }
+                            .padding(12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(30)
                         }
-                        .padding(.vertical, 4)
                     }
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(.systemBackground))
+                .cornerRadius(30)
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
                 
-                // 添加评论区域
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
                     Text("Add Your Review")
                         .font(.headline)
+                        .foregroundColor(.primary)
                     
-                    // 评分选择
-                    HStack {
-                        Text("Rating:")
-                        ForEach(1...5, id: \.self) { star in
-                            Image(systemName: star <= newCommentRating ? "star.fill" : "star")
-                                .foregroundColor(star <= newCommentRating ? .yellow : .gray)
-                                .onTapGesture {
-                                    newCommentRating = star
-                                }
-                        }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your Review")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("Share your thoughts about this course...", text: $newCommentText, axis: .vertical)
+                            .padding(12)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(30)
+                            .lineLimit(3...6)
                     }
                     
-                    TextField("Write your review here...", text: $newCommentText, axis: .vertical)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .lineLimit(3...6)
-                    
-                    Button("Submit Review") {
-                        submitReview()
+                    Button(action: submitReview) {
+                        HStack {
+                            Spacer()
+                            Text("Submit Review")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Spacer()
+                        }
+                        .padding(.vertical, 12)
+                        .background(newCommentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray : Color.blue)
+                        .cornerRadius(30)
                     }
                     .disabled(newCommentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .buttonStyle(.borderedProminent)
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(.systemBackground))
+                .cornerRadius(30)
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
                 
                 // 现有评论
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack {
                         Text("Course Reviews")
                             .font(.headline)
+                            .foregroundColor(.primary)
                         
                         Spacer()
                         
@@ -131,11 +175,20 @@ struct CourseDetailView: View {
                     }
                     
                     if course.comments.isEmpty {
-                        Text("No reviews yet. Be the first to review!")
-                            .foregroundColor(.secondary)
-                            .italic()
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding()
+                        VStack(spacing: 12) {
+                            Image(systemName: "bubble.left")
+                                .font(.system(size: 40))
+                                .foregroundColor(.gray.opacity(0.5))
+                            Text("No reviews yet")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            Text("Be the first to share your experience!")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(40)
                     } else {
                         LazyVStack(spacing: 16) {
                             ForEach(course.comments.sorted { $0.commentDate > $1.commentDate }) { comment in
@@ -146,20 +199,21 @@ struct CourseDetailView: View {
                         }
                     }
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(Color(.systemBackground))
+                .cornerRadius(30)
+                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
                 
-                // 底部间距，确保内容不会被 TabBar 遮挡
                 Spacer()
-                    .frame(height: 100) // 为底部 TabBar 预留空间
+                    .frame(height: 60)
             }
             .padding(.horizontal)
-            .padding(.top, 1) // 减少顶部间距，让内容更靠上
+            .padding(.top, 8)
         }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("Course Details")
         .navigationBarTitleDisplayMode(.inline)
-        // 隐藏默认的 TabBar
         .toolbar(.hidden, for: .tabBar)
     }
     
@@ -178,12 +232,10 @@ struct CourseDetailView: View {
         )
         
         modelContext.insert(newComment)
-        
-        // 清空输入
+
         newCommentText = ""
         newCommentRating = 5
         
-        // 保存更改
         do {
             try modelContext.save()
         } catch {
@@ -202,46 +254,51 @@ struct CourseDetailView: View {
     }
 }
 
-// 评论卡片组件
 struct ReviewCard: View {
     let comment: CourseComment
     let onDelete: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // 评分和日期
-            HStack {
-                HStack(spacing: 2) {
-                    ForEach(1...5, id: \.self) { star in
-                        Image(systemName: star <= comment.rating ? "star.fill" : "star")
-                            .foregroundColor(star <= comment.rating ? .yellow : .gray)
-                            .font(.caption)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            // 顶部信息栏
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(comment.author?.username ?? "Unknown User")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+                    
+                    Text(formatDate(comment.commentDate))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
                 
                 Spacer()
-                
-                Text(formatDate(comment.commentDate))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                // 删除按钮
+
                 Button(action: onDelete) {
                     Image(systemName: "trash")
-                        .foregroundColor(.red)
                         .font(.caption)
+                        .foregroundColor(.red.opacity(0.7))
+                        .padding(6)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(Circle())
                 }
             }
-            
-            // 评论内容
+
             Text(comment.content)
                 .font(.body)
                 .foregroundColor(.primary)
+                .lineSpacing(2)
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(8)
-        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(.systemBackground))
+        .cornerRadius(30)
+        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+        )
     }
     
     private func formatDate(_ date: Date) -> String {
@@ -249,5 +306,12 @@ struct ReviewCard: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         return formatter.string(from: date)
+    }
+}
+
+extension ClassTime {
+    func dayName() -> String {
+        let dayNames = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        return dayNames.indices.contains(dayOfWeek) ? dayNames[dayOfWeek] : "Unknown"
     }
 }
