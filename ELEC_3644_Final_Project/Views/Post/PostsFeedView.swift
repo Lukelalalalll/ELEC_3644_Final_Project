@@ -1,10 +1,3 @@
-//
-//  PostsFeedView.swift
-//  ELEC_3644_Final_Project
-//
-//  Created by cccakkke on 2025/11/20.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -14,6 +7,7 @@ struct PostsFeedView: View {
     @State private var isRefreshing = false
     @State private var showingNewPost = false
     @State private var lastRefreshTime = Date()
+    @State private var refreshID = UUID()
     
     var body: some View {
         NavigationView {
@@ -48,19 +42,8 @@ struct PostsFeedView: View {
             .refreshable {
                 await refreshPosts()
             }
-            .onAppear {
-                let shouldRefresh = posts.isEmpty ||
-                                  Date().timeIntervalSince(lastRefreshTime) > 300 ||
-                                  UserDefaults.standard.bool(forKey: "forceRefreshPosts")
-                
-                if shouldRefresh {
-                    Task {
-                        await refreshPosts()
-                        UserDefaults.standard.set(false, forKey: "forceRefreshPosts")
-                    }
-                }
-            }
         }
+        .id(refreshID)
     }
     
     private func refreshPosts() async {
@@ -68,17 +51,17 @@ struct PostsFeedView: View {
         defer { isRefreshing = false }
         
         do {
-            print("开始从 Firebase 强制刷新所有帖子...")
             let firebasePosts = try await fetchPostsFromFirebase()
+            await refreshAllPostsLikeStatus(for: firebasePosts)
             
             await MainActor.run {
                 updateLocalPosts(with: firebasePosts)
                 lastRefreshTime = Date()
-                print("成功刷新了 \(firebasePosts.count) 个帖子，包含所有用户的数据")
+                refreshID = UUID()
             }
             
         } catch {
-            print("从 Firebase 刷新帖子失败: \(error)")
+            print("Failed to refresh posts from Firebase: \(error)")
             
             await MainActor.run {
                 if posts.isEmpty {
@@ -87,6 +70,39 @@ struct PostsFeedView: View {
             }
         }
     }
+    
+    
+    private func refreshAllPostsLikeStatus(for posts: [Post]) async {
+        let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
+        
+        await withTaskGroup(of: Void.self) { group in
+            for post in posts {
+                group.addTask {
+                    await self.refreshSinglePostLikeStatus(post: post, currentUserId: currentUserId)
+                }
+            }
+        }
+    }
+        
+    private func refreshSinglePostLikeStatus(post: Post, currentUserId: String) async {
+        do {
+            if let data = try await FirebaseService.shared.getPostData(postId: post.postId) {
+                let likesFromData = data["likes"] as? Int ?? 0
+                let likedByUserIds = data["likedByUserIds"] as? [String] ?? []
+                
+                await MainActor.run {
+                    post.likes = likesFromData
+                    
+                    if !currentUserId.isEmpty {
+                        print("Post \(post.postId) likes: \(likesFromData), current user liked: \(likedByUserIds.contains(currentUserId))")
+                    }
+                }
+            }
+        } catch {
+            print("Failed to refresh like status for post \(post.postId): \(error)")
+        }
+    }
+    
     
     private func fetchPostsFromFirebase() async throws -> [Post] {
         return try await withCheckedThrowingContinuation { continuation in
@@ -104,32 +120,21 @@ struct PostsFeedView: View {
     @MainActor
     private func updateLocalPosts(with firebasePosts: [Post]) {
         do {
+            // Clear all existing posts from local database
             let localPosts = try modelContext.fetch(FetchDescriptor<Post>())
-            
-            var localPostDict = [String: Post]()
             for post in localPosts {
-                localPostDict[post.postId] = post
+                modelContext.delete(post)
             }
             
+            // Insert new posts from Firebase
             for firebasePost in firebasePosts {
-                if let existingPost = localPostDict[firebasePost.postId] {
-                    updateExistingPost(existingPost, with: firebasePost)
-                } else {
-                    modelContext.insert(firebasePost)
-                }
-            }
-            
-            // 删除本地不存在于 Firebase 的帖子
-            let firebasePostIds = Set(firebasePosts.map { $0.postId })
-            for localPost in localPosts {
-                if !firebasePostIds.contains(localPost.postId) {
-                    modelContext.delete(localPost)
-                }
+                modelContext.insert(firebasePost)
             }
             
             try modelContext.save()
+            
         } catch {
-            print("更新本地帖子失败: \(error)")
+            print("Failed to update local posts: \(error)")
         }
     }
     
@@ -141,7 +146,7 @@ struct PostsFeedView: View {
         existing.postDate = firebase.postDate
         existing.author = firebase.author
         existing.comments = firebase.comments
-        existing.likedByUsers = firebase.likedByUsers
+        existing.likes = firebase.likes
     }
     
     private func addSamplePosts() {
@@ -159,7 +164,6 @@ struct PostCell: View {
     @State private var liked: Bool
     @State private var likeCount: Int
     
-    // 获取当前用户（类似 PostDetailView）
     private var currentUser: User? {
         guard let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") else {
             return nil
@@ -177,12 +181,13 @@ struct PostCell: View {
     init(post: Post, modelContext: ModelContext) {
         self.post = post
         let currentUserId = UserDefaults.standard.string(forKey: "currentUserId")
+        
         let isLiked = currentUserId != nil && post.likedByUsers.contains { $0.userId == currentUserId }
         self._liked = State(initialValue: isLiked)
         self._likeCount = State(initialValue: post.likes)
     }
     
-    // 辅助：异步获取用户
+
     private func getUserAsync(userId: String) async -> User? {
         await withCheckedContinuation { continuation in
             FirebaseService.shared.getUserData(userId: userId) { result in
@@ -196,7 +201,6 @@ struct PostCell: View {
         }
     }
     
-    // 刷新点赞状态（类似 PostDetailView）
     private func refreshLikeStatus() async {
         do {
             if let data = try await FirebaseService.shared.getPostData(postId: post.postId) {
@@ -205,35 +209,14 @@ struct PostCell: View {
                 
                 await MainActor.run {
                     post.likes = likesFromData
-                    post.likedByUsers.removeAll()
-                }
-                
-                // 并发加载用户
-                let users = await withTaskGroup(of: User?.self) { group in
-                    for userId in likedByUserIds {
-                        group.addTask {
-                            await self.getUserAsync(userId: userId)
-                        }
-                    }
-                    var collectedUsers: [User] = []
-                    for await user in group {
-                        if let user = user {
-                            collectedUsers.append(user)
-                        }
-                    }
-                    return collectedUsers
-                }
-                
-                await MainActor.run {
-                    post.likedByUsers.append(contentsOf: users)
-                    likeCount = post.likes
+                    likeCount = likesFromData
+                    
                     let currentUserId = UserDefaults.standard.string(forKey: "currentUserId") ?? ""
                     liked = likedByUserIds.contains(currentUserId)
-                    try? modelContext.save()
                 }
             }
         } catch {
-            print("刷新点赞状态失败: \(error)")
+            print("Failed to refresh like status: \(error)")
         }
     }
     
@@ -290,11 +273,11 @@ struct PostCell: View {
             HStack(spacing: 20) {
                 Button {
                     guard let currentUser = currentUser else {
-                        print("用户未登录，无法点赞")
+                        print("User not logged in, cannot like post")
                         return
                     }
                     
-                    let wasLiked = liked  // 记录操作前状态
+                    let wasLiked = liked
                     
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                         if liked {
@@ -307,7 +290,6 @@ struct PostCell: View {
                         likeCount = post.likes
                     }
                     
-                    // 同步到 Firebase
                     updateLikesOnServer(wasLiked: wasLiked)
                 } label: {
                     HStack(spacing: 6) {
@@ -346,17 +328,12 @@ struct PostCell: View {
             RoundedRectangle(cornerRadius: 30)
                 .stroke(Color(.systemGray5), lineWidth: 0.5)
         )
-        .onAppear {
-            Task {
-                await refreshLikeStatus()
-            }
-        }
     }
     
     private func updateLikesOnServer(wasLiked: Bool) {
         guard let currentUser = currentUser else { return }
         
-        let isLiking = !wasLiked  // 因为操作后 liked = !wasLiked
+        let isLiking = !wasLiked
         
         FirebaseService.shared.updatePostLikeStatus(postId: post.postId, userId: currentUser.userId, isLiking: isLiking) { result in
             DispatchQueue.main.async {
@@ -364,23 +341,19 @@ struct PostCell: View {
                 case .success:
                     do {
                         try modelContext.save()
-                        print("点赞状态更新成功")
-                        // 操作成功后刷新状态，确保同步
+                        print("Like status updated successfully")
                         Task {
                             await refreshLikeStatus()
                         }
                     } catch {
-                        print("保存点赞状态到本地失败: \(error)")
+                        print("Failed to save like status to local database: \(error)")
                     }
                 case .failure(let error):
-                    print("更新点赞数到 Firebase 失败: \(error)")
-                    // 回滚：基于 wasLiked 恢复
+                    print("Failed to update likes on Firebase: \(error)")
                     if !wasLiked {
-                        // 原操作是 like，失败则 unlike
                         post.unlike(by: currentUser)
                         liked = false
                     } else {
-                        // 原操作是 unlike，失败则 like
                         post.like(by: currentUser)
                         liked = true
                     }
