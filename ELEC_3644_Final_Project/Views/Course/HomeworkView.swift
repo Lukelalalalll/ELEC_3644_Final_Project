@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseFirestore
 
 struct HomeworkView: View {
     @Environment(\.modelContext) private var modelContext
@@ -145,35 +146,107 @@ struct HomeworkView: View {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let courseIds):
-                    // 获取所有示例课程
-                    let allSampleCourses = createSampleCourses()
-                    // 过滤出用户已选的课程
-                    let enrolledCourses = allSampleCourses.filter { courseIds.contains($0.courseId) }
-                    // 收集所有作业
-                    var allHomeworks: [Homework] = []
+                    print("User enrolled in \(courseIds.count) courses: \(courseIds)")
                     
-                    for course in enrolledCourses {
-                        for homework in course.homeworkList {
-                            // 为作业设置课程信息（如果需要显示课程信息）
-                            let homeworkWithCourse = Homework(
-                                homeworkId: homework.homeworkId,
-                                title: homework.title,
-                                dueDate: homework.dueDate,
-                                course: course
-                            )
-                            allHomeworks.append(homeworkWithCourse)
-                        }
+                    if courseIds.isEmpty {
+                        self.userHomeworks = []
+                        self.isLoading = false
+                        return
                     }
-
-                    self.userHomeworks = allHomeworks.sorted { $0.dueDate < $1.dueDate }
-                    self.isLoading = false
+                    
+                    // 从 Firebase 获取所有已选课程的详细信息，包括作业
+                    self.fetchCoursesWithHomeworks(courseIds: courseIds)
                     
                 case .failure(let error):
-                    self.errorMessage = "Failed to load homework: \(error.localizedDescription)"
+                    self.errorMessage = "Failed to load enrolled courses: \(error.localizedDescription)"
                     self.isLoading = false
                 }
             }
         }
+    }
+    
+    private func fetchCoursesWithHomeworks(courseIds: [String]) {
+        let db = Firestore.firestore()
+        var allHomeworks: [Homework] = []
+        var completedRequests = 0
+        
+        for courseId in courseIds {
+            db.collection("courses").document(courseId).getDocument { document, error in
+                DispatchQueue.main.async {
+                    completedRequests += 1
+                    
+                    if let error = error {
+                        print("❌ Failed to fetch course \(courseId): \(error)")
+                    } else if let document = document, document.exists {
+                        if let courseData = document.data(),
+                           let homeworksData = courseData["homeworks"] as? [[String: Any]] {
+                            
+                            print("✅ Found \(homeworksData.count) homeworks in course \(courseId)")
+                            
+                            // 解析作业数据
+                            for homeworkData in homeworksData {
+                                if let homework = self.parseHomework(from: homeworkData, courseId: courseId, courseData: courseData) {
+                                    allHomeworks.append(homework)
+                                }
+                            }
+                        } else {
+                            print("⚠️ No homeworks found in course \(courseId)")
+                        }
+                    } else {
+                        print("❌ Course document \(courseId) does not exist")
+                    }
+                    
+                    // 当所有课程请求都完成时
+                    if completedRequests == courseIds.count {
+                        self.userHomeworks = allHomeworks.sorted { $0.dueDate < $1.dueDate }
+                        self.isLoading = false
+                        print("🎯 Loaded \(allHomeworks.count) homeworks from \(courseIds.count) courses")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func parseHomework(from homeworkData: [String: Any], courseId: String, courseData: [String: Any]) -> Homework? {
+        guard let homeworkId = homeworkData["homeworkId"] as? String,
+              let title = homeworkData["title"] as? String,
+              let dueDateString = homeworkData["dueDate"] as? String else {
+            print("❌ Missing required homework fields")
+            return nil
+        }
+        
+        // 解析日期
+        let dateFormatter = ISO8601DateFormatter()
+        guard let dueDate = dateFormatter.date(from: dueDateString) else {
+            print("❌ Failed to parse due date: \(dueDateString)")
+            return nil
+        }
+        
+        // 获取课程信息
+        let courseName = courseData["courseName"] as? String ?? "Unknown Course"
+        let courseCode = courseData["courseCode"] as? String ?? "Unknown Code"
+        let professor = courseData["professor"] as? String ?? "Unknown Professor"
+        
+        // 创建课程对象（简化版，只包含必要信息）
+        let course = Course(
+            courseId: courseId,
+            courseName: courseName,
+            professor: professor,
+            courseCode: courseCode,
+            credits: 0, // 作业显示不需要学分信息
+            courseDescription: ""
+        )
+        
+        // 创建作业对象
+        let homework = Homework(
+            homeworkId: homeworkId,
+            title: title,
+            dueDate: dueDate,
+            course: course
+        )
+        
+        print("✅ Parsed homework: \(title) due \(dueDate) for course \(courseName)")
+        return homework
     }
 }
 
@@ -219,10 +292,13 @@ struct HomeworkCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(homework.title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
+                // 课程代码显示在上面并加粗
+                if let course = homework.course {
+                    Text(course.courseCode)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                }
                 
                 Spacer()
                 
@@ -236,11 +312,11 @@ struct HomeworkCardView: View {
                     .cornerRadius(6)
             }
             
-            if let course = homework.course {
-                Text("\(course.courseName) - \(course.courseCode)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+            // 作业标题显示在下面
+            Text(homework.title)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
             
             HStack {
                 Image(systemName: "calendar")
@@ -264,7 +340,7 @@ struct HomeworkCardView: View {
         .background(Color(.systemBackground))
         .cornerRadius(30)
         .overlay(
-            RoundedRectangle(cornerRadius: 30) 
+            RoundedRectangle(cornerRadius: 30)
                 .stroke(Color.gray.opacity(0.2), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)

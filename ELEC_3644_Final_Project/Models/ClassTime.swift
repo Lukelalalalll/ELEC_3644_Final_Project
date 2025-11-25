@@ -34,7 +34,7 @@ class ClassTime {
     }
     
     // 便捷方法：获取星期几字符串
-    private func dayOfWeekString() -> String {
+    func dayOfWeekString() -> String {
         let days = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         return dayOfWeek >= 1 && dayOfWeek <= 7 ? days[dayOfWeek] : "Unknown"
     }

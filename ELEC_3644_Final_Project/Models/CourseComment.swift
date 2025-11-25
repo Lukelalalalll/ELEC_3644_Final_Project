@@ -5,6 +5,13 @@
 //  Created by cccakkke on 2025/11/21.
 //
 
+//
+//  CourseCommentModel.swift
+//  ELEC_3644_Final_Project
+//
+//  Created by cccakkke on 2025/11/21.
+//
+
 import SwiftData
 import Foundation
 
@@ -12,14 +19,15 @@ import Foundation
 class CourseComment {
     var commentId: String
     var content: String
-    var rating: Int // 课程评分
     var commentDate: Date
+    var rating: Int // 添加评分字段
     
-    // 关系 - 评论的作者
     var author: User?
-    
-    // 关系 - 所属的课程
     var course: Course?
+    
+    // Firebase 同步字段
+    var authorId: String?
+    var courseId: String?
     
     init(commentId: String, content: String, rating: Int = 5, author: User? = nil, course: Course? = nil) {
         self.commentId = commentId
@@ -28,5 +36,7 @@ class CourseComment {
         self.commentDate = Date()
         self.author = author
         self.course = course
+        self.authorId = author?.userId
+        self.courseId = course?.courseId
     }
 }

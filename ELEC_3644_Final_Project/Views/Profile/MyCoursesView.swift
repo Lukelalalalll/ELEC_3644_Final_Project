@@ -142,13 +142,11 @@ struct MyCoursesView: View {
     }
     
     private func refreshCourses() async {
-        // 模拟加载延迟
-        try? await Task.sleep(nanoseconds: 1_000_000_000) // 1秒延迟
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
         
         return await withCheckedContinuation { continuation in
             DispatchQueue.main.async {
                 self.loadEnrolledCourses()
-                // 假设加载需要一些时间，这里等待加载完成
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     continuation.resume()
                 }
@@ -166,14 +164,21 @@ struct MyCoursesView: View {
         isLoading = true
         errorMessage = nil
         
+        // 从 Firebase 获取已选课程ID
         FirebaseService.shared.fetchEnrolledCourseIds(for: user.userId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let ids):
-                    let allSampleCourses = createSampleCourses()
-                    let matched = allSampleCourses.filter { ids.contains($0.courseId) }
-                    self.enrolledCourses = matched.sorted { $0.courseName < $1.courseName }
-                    self.isLoading = false
+                    print("✅ 从Firebase获取到课程ID: \(ids)")
+                    
+                    if ids.isEmpty {
+                        self.enrolledCourses = []
+                        self.isLoading = false
+                        return
+                    }
+                    
+                    // 从 Firebase 获取课程详细信息
+                    self.fetchCourseDetailsFromFirebase(courseIds: ids)
                     
                 case .failure(let error):
                     self.errorMessage = "Failed to load courses: \(error.localizedDescription)"
@@ -181,6 +186,187 @@ struct MyCoursesView: View {
                 }
             }
         }
+    }
+    
+    private func fetchCourseDetailsFromFirebase(courseIds: [String]) {
+        let db = Firestore.firestore()
+        let group = DispatchGroup()
+        var courses: [Course] = []
+        var errors: [Error] = []
+        
+        for courseId in courseIds {
+            group.enter()
+            
+            db.collection("courses").document(courseId).getDocument { document, error in
+                defer { group.leave() }
+                
+                if let error = error {
+                    errors.append(error)
+                    print("❌ 获取课程详情失败 \(courseId): \(error)")
+                    return
+                }
+                
+                guard let document = document, document.exists,
+                      let data = document.data() else {
+                    print("❌ 课程文档不存在: \(courseId)")
+                    return
+                }
+                
+                if let course = self.convertToCourse(from: data, id: courseId) {
+                    courses.append(course)
+                    print("✅ 成功加载课程: \(course.courseName)")
+                } else {
+                    print("❌ 转换课程失败: \(courseId)")
+                }
+            }
+        }
+        
+        group.notify(queue: .main) {
+            if !errors.isEmpty {
+                print("⚠️ 部分课程加载失败: \(errors.count) 个错误")
+            }
+            
+            self.enrolledCourses = courses.sorted { $0.courseName < $1.courseName }
+            self.isLoading = false
+            print("🎯 最终加载课程数量: \(courses.count)")
+        }
+    }
+    
+    private func convertToCourse(from data: [String: Any], id: String) -> Course? {
+        guard let courseName = data["courseName"] as? String,
+              let professor = data["professor"] as? String,
+              let courseCode = data["courseCode"] as? String else {
+            print("❌ 缺少必需字段")
+            return nil
+        }
+        
+        // 处理 credits 字段
+        let credits: Int
+        if let creditsInt = data["credits"] as? Int {
+            credits = creditsInt
+        } else if let creditsString = data["credits"] as? String,
+                  let creditsValue = Int(creditsString) {
+            credits = creditsValue
+        } else {
+            print("❌ credits 字段格式错误")
+            return nil
+        }
+        
+        let courseDescription = data["courseDescription"] as? String ?? ""
+        
+        let course = Course(
+            courseId: id,
+            courseName: courseName,
+            professor: professor,
+            courseCode: courseCode,
+            credits: credits,
+            courseDescription: courseDescription
+        )
+        
+        // 转换上课时间 - 修复字符串到数字的转换
+        if let classTimes = data["classTimes"] as? [[String: Any]] {
+            print("📅 找到 \(classTimes.count) 个上课时间段")
+            for (index, classTimeData) in classTimes.enumerated() {
+                print("🔍 处理第 \(index + 1) 个时间段: \(classTimeData)")
+                
+                // 修复：处理字符串类型的数字
+                guard let dayOfWeekValue = classTimeData["dayOfWeek"],
+                      let startTimeValue = classTimeData["startTime"],
+                      let endTimeValue = classTimeData["endTime"],
+                      let locationValue = classTimeData["location"] else {
+                    print("❌ 时间段数据存在 nil 值")
+                    continue
+                }
+                
+                // 处理 dayOfWeek：可能是 String 或 Int
+                let dayOfWeek: Int
+                if let dayInt = dayOfWeekValue as? Int {
+                    dayOfWeek = dayInt
+                } else if let dayString = dayOfWeekValue as? String,
+                          let dayIntValue = Int(dayString) {
+                    dayOfWeek = dayIntValue
+                } else {
+                    print("❌ dayOfWeek 格式错误: \(dayOfWeekValue)")
+                    continue
+                }
+                
+                // 处理时间字符串
+                guard let startTimeString = startTimeValue as? String,
+                      let endTimeString = endTimeValue as? String,
+                      let location = locationValue as? String else {
+                    print("❌ 时间或位置字段格式错误")
+                    continue
+                }
+                
+                print("✅ 时间段数据完整: dayOfWeek=\(dayOfWeek), startTime=\(startTimeString), endTime=\(endTimeString), location=\(location)")
+                
+                let startTime = parseTimeString(startTimeString)
+                let endTime = parseTimeString(endTimeString)
+                
+                print("🕒 转换后时间: startTime=\(startTime), endTime=\(endTime)")
+                
+                course.addClassTime(
+                    dayOfWeek: dayOfWeek,
+                    startTime: startTime,
+                    endTime: endTime,
+                    location: location
+                )
+                
+                print("✅ 成功添加上课时间到课程对象")
+            }
+            
+            // 检查课程对象中的 classTimes
+            print("📋 课程对象中的 classTimes 数量: \(course.classTimes.count)")
+            for (index, ct) in course.classTimes.enumerated() {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "HH:mm"
+                let startStr = formatter.string(from: ct.startTime)
+                let endStr = formatter.string(from: ct.endTime)
+                print("   \(index + 1). 星期\(ct.dayOfWeek) \(startStr)-\(endStr) @ \(ct.location)")
+            }
+        } else {
+            print("❌ 没有找到 classTimes 字段或格式错误")
+            print("   classTimes 数据: \(data["classTimes"] ?? "nil")")
+            print("   classTimes 类型: \(type(of: data["classTimes"]))")
+        }
+        
+        // 转换作业
+        if let homeworks = data["homeworks"] as? [[String: Any]] {
+            for homeworkData in homeworks {
+                if let homeworkId = homeworkData["homeworkId"] as? String,
+                   let title = homeworkData["title"] as? String,
+                   let dueDateString = homeworkData["dueDate"] as? String,
+                   let dueDate = parseISODate(dueDateString) {
+                    
+                    course.addHomework(
+                        homeworkId: homeworkId,
+                        title: title,
+                        dueDate: dueDate
+                    )
+                }
+            }
+        }
+        
+        return course
+    }
+    
+    private func parseTimeString(_ timeString: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        
+        if let date = formatter.date(from: timeString) {
+            print("✅ 成功解析时间字符串 '\(timeString)' -> \(date)")
+            return date
+        } else {
+            print("❌ 无法解析时间字符串 '\(timeString)'")
+            return Date()
+        }
+    }
+    
+    private func parseISODate(_ dateString: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        return formatter.date(from: dateString)
     }
     
     private func deleteCourse(_ course: Course) {
@@ -197,7 +383,6 @@ struct MyCoursesView: View {
                 if let error = error {
                     self.errorMessage = "Failed to delete course: \(error.localizedDescription)"
                 } else {
-                    // 从本地列表中删除课程
                     withAnimation {
                         self.enrolledCourses.removeAll { $0.courseId == course.courseId }
                     }

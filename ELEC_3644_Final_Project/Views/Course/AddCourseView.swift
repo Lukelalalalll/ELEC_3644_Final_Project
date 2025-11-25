@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import FirebaseFirestore
 
 struct AddCourseView: View {
     @Environment(\.modelContext) private var modelContext
@@ -32,19 +33,19 @@ struct AddCourseView: View {
         }
     }
     
-    private var sampleCourses: [Course] {
-        createSampleCourses()
-    }
-    
     @State private var searchText = ""
     @State private var filteredCourses: [Course] = []
+    @State private var allCourses: [Course] = []
     @State private var showConfirmation = false
     @State private var addedCourseName = ""
-    @State private var isLoading = false
+    @State private var isInitialLoading = true
     @State private var errorMessage: String?
+    
+    @State private var loadingCourseIds: Set<String> = []
     
     var body: some View {
         VStack(spacing: 0) {
+            // 搜索栏
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.gray)
@@ -61,47 +62,82 @@ struct AddCourseView: View {
             
             // 课程列表
             List {
-                if filteredCourses.isEmpty && !searchText.isEmpty {
-                    Text("Course not found")
-                        .foregroundColor(.secondary)
-                        .italic()
+                if isInitialLoading {
+                    ProgressView("Loading courses...")
                         .frame(maxWidth: .infinity, alignment: .center)
-                } else if !searchText.isEmpty {
-                    Section("Selectable Courses") {
-                        ForEach(filteredCourses) { course in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(course.courseName)
-                                        .font(.headline)
-                                    Text("\(course.courseCode) · \(course.professor)")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                
-                                if isLoading {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                } else {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.title2)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                addCourseToUser(course)
-                            }
+                        .listRowSeparator(.hidden)
+                } else if let errorMessage = errorMessage {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 40))
+                            .foregroundColor(.orange)
+                        Text(errorMessage)
+                            .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            loadAllCoursesFromFirebase()
                         }
+                        .buttonStyle(.bordered)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+                    .listRowSeparator(.hidden)
+                } else if filteredCourses.isEmpty && !searchText.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 40))
+                            .foregroundColor(.gray)
+                        Text("Course not found")
+                            .foregroundColor(.secondary)
+                            .italic()
+                        Text("Try different keywords")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 30)
+                    .listRowSeparator(.hidden)
+                } else if !searchText.isEmpty {
+                    Section {
+                        ForEach(filteredCourses) { course in
+                            CourseRowView(
+                                course: course,
+                                isLoading: loadingCourseIds.contains(course.courseId),
+                                onAdd: {
+                                    addCourseToUser(course)
+                                }
+                            )
+                            .disabled(loadingCourseIds.contains(course.courseId))
+                        }
+                    } header: {
+                        Text("Available Courses (\(filteredCourses.count))")
+                            .font(.headline)
+                            .foregroundColor(.primary)
                     }
                 } else {
-                    Text("Input the course name/code to start searching...")
-                        .foregroundColor(.secondary)
-                        .italic()
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    VStack(spacing: 16) {
+                        Image(systemName: "graduationcap.circle")
+                            .font(.system(size: 50))
+                            .foregroundColor(.blue)
+                        VStack(spacing: 4) {
+                            Text("Search for Courses")
+                                .font(.headline)
+                                .foregroundColor(.primary)
+                            Text("Enter course name or code to start searching")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 50)
+                    .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
+            .refreshable {
+                loadAllCoursesFromFirebase()
+            }
         }
         .navigationTitle("Add Courses")
         .navigationBarTitleDisplayMode(.inline)
@@ -113,29 +149,126 @@ struct AddCourseView: View {
         .alert("Course Added Successfully", isPresented: $showConfirmation) {
             Button("OK") { }
         } message: {
-            Text("\(addedCourseName) added to your course schedule successfully!")
+            Text("\(addedCourseName) has been added to your course schedule!")
         }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
-            Button("Sure") { errorMessage = nil }
+            Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
         }
         .onAppear {
-            filterCourses()
+            if allCourses.isEmpty {
+                loadAllCoursesFromFirebase()
+            }
         }
-        // 添加点击空白处收回键盘的功能
-        .onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+    
+    private func loadAllCoursesFromFirebase() {
+        isInitialLoading = true
+        errorMessage = nil
+        
+        let db = Firestore.firestore()
+        db.collection("courses").getDocuments { snapshot, error in
+            DispatchQueue.main.async {
+                self.isInitialLoading = false
+                
+                if let error = error {
+                    self.errorMessage = "Failed to load courses: \(error.localizedDescription)"
+                    print("❌ Firebase 加载错误: \(error)")
+                    return
+                }
+                
+                guard let documents = snapshot?.documents else {
+                    self.errorMessage = "No courses found"
+                    print("❌ 没有找到任何课程文档")
+                    return
+                }
+                
+                print("✅ 从 Firebase 加载到 \(documents.count) 个课程文档")
+                
+                var courses: [Course] = []
+                
+                for document in documents {
+                    let data = document.data()
+                    if let course = self.convertToCourse(from: data, id: document.documentID) {
+                        courses.append(course)
+                    }
+                }
+                
+                self.allCourses = courses.sorted { $0.courseName < $1.courseName }
+                print("🎯 最终加载课程数量: \(courses.count)")
+            }
         }
+    }
+    
+    private func convertToCourse(from data: [String: Any], id: String) -> Course? {
+        guard let courseName = data["courseName"] as? String,
+              let professor = data["professor"] as? String,
+              let courseCode = data["courseCode"] as? String else {
+            return nil
+        }
+        
+        let credits: Int
+        if let creditsInt = data["credits"] as? Int {
+            credits = creditsInt
+        } else if let creditsString = data["credits"] as? String,
+                  let creditsValue = Int(creditsString) {
+            credits = creditsValue
+        } else {
+            return nil
+        }
+        
+        let courseDescription = data["courseDescription"] as? String ?? ""
+        
+        let course = Course(
+            courseId: id,
+            courseName: courseName,
+            professor: professor,
+            courseCode: courseCode,
+            credits: credits,
+            courseDescription: courseDescription
+        )
+        
+        // 转换上课时间
+        if let classTimes = data["classTimes"] as? [[String: Any]] {
+            for classTimeData in classTimes {
+                if let dayOfWeek = classTimeData["dayOfWeek"] as? Int,
+                   let startTimeString = classTimeData["startTime"] as? String,
+                   let endTimeString = classTimeData["endTime"] as? String,
+                   let location = classTimeData["location"] as? String {
+                    
+                    let startTime = parseTimeString(startTimeString)
+                    let endTime = parseTimeString(endTimeString)
+                    
+                    course.addClassTime(
+                        dayOfWeek: dayOfWeek,
+                        startTime: startTime,
+                        endTime: endTime,
+                        location: location
+                    )
+                }
+            }
+        }
+        
+        return course
+    }
+    
+    private func parseTimeString(_ timeString: String) -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.date(from: timeString) ?? Date()
     }
     
     private func filterCourses() {
         if searchText.isEmpty {
             filteredCourses = []
         } else {
-            filteredCourses = sampleCourses.filter { course in
-                course.courseName.localizedCaseInsensitiveContains(searchText) ||
-                course.courseCode.localizedCaseInsensitiveContains(searchText)
+            let searchLower = searchText.lowercased()
+            filteredCourses = allCourses.filter { course in
+                course.courseName.lowercased().contains(searchLower) ||
+                course.courseCode.lowercased().contains(searchLower) ||
+                course.professor.lowercased().contains(searchLower)
             }
         }
     }
@@ -146,22 +279,21 @@ struct AddCourseView: View {
             return
         }
         
-        print("开始添加课程: \(course.courseId) 给用户: \(user.userId) (\(user.username))")
+        // 设置当前课程的加载状态
+        loadingCourseIds.insert(course.courseId)
         
-        isLoading = true
+        print("开始添加课程: \(course.courseId) 给用户: \(user.userId)")
         
         // 1. 检查 Firebase 是否已经选过这门课
         FirebaseService.shared.fetchEnrolledCourseIds(for: user.userId) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let enrolledCourseIds):
-                    print("Firebase 中已选课程: \(enrolledCourseIds)")
-                    
                     if enrolledCourseIds.contains(course.courseId) {
                         print("课程已存在，跳过添加")
-                        isLoading = false
-                        addedCourseName = course.courseName
-                        showConfirmation = true
+                        self.loadingCourseIds.remove(course.courseId)
+                        self.addedCourseName = course.courseName
+                        self.showConfirmation = true
                         return
                     }
                     
@@ -182,12 +314,14 @@ struct AddCourseView: View {
             courseId: course.courseId
         ) { result in
             DispatchQueue.main.async {
-                self.isLoading = false
+                // 移除加载状态
+                self.loadingCourseIds.remove(course.courseId)
                 
                 switch result {
                 case .success:
                     print("Firebase add course success")
                     
+                    // 更新本地 SwiftData
                     if !user.enrolledCourseIds.contains(course.courseId) {
                         user.enrolledCourseIds.append(course.courseId)
                     }
@@ -198,6 +332,7 @@ struct AddCourseView: View {
                         self.addedCourseName = course.courseName
                         self.showConfirmation = true
                         
+                        // 清空搜索
                         self.searchText = ""
                         self.filteredCourses = []
                     } catch {
@@ -207,13 +342,63 @@ struct AddCourseView: View {
                     
                 case .failure(let error):
                     print("Firebase 添加课程失败: \(error)")
-                    self.errorMessage = "fail to add：\(error.localizedDescription)"
+                    self.errorMessage = "添加失败：\(error.localizedDescription)"
                 }
             }
         }
     }
 }
 
+// 独立的课程行视图，避免状态冲突
+struct CourseRowView: View {
+    let course: Course
+    let isLoading: Bool
+    let onAdd: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // 课程信息
+            VStack(alignment: .leading, spacing: 6) {
+                Text(course.courseName)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(course.courseCode)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                HStack {
+                    Text(course.professor)
+                    Text("•")
+                    Text("\(course.credits) credits")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // 添加按钮
+            Button(action: onAdd) {
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.blue)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(isLoading)
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+    }
+}
+
 #Preview {
-    AddCourseView()
+    NavigationView {
+        AddCourseView()
+    }
 }
