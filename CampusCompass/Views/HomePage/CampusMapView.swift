@@ -57,9 +57,6 @@ struct CampusMapView: View {
             MapScaleView()
         }
         .ignoresSafeArea()
-        .onTapGesture {
-            hideKeyboard()
-        }
     }
     
     private var searchBar: some View {

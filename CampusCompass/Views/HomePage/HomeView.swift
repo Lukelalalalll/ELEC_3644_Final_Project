@@ -90,7 +90,6 @@ struct HomeView: View {
                             
                             Spacer()
                             
-                            // 添加刷新按钮
                             Button(action: {
                                 loadUserCoursesFromFirebase()
                             }) {
