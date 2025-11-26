@@ -102,7 +102,6 @@ struct PublishPostView: View {
                 }
                 .padding(.horizontal, 16)
                 
-                // 图片选择区域
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Add photos")
                         .font(.headline)
