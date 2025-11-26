@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import FirebaseFirestore
+import UIKit
 
 struct CoursesView: View {
     @Environment(\.modelContext) private var modelContext
@@ -96,6 +97,7 @@ struct CoursesView: View {
                         .background(Color(.systemGray6))
                         .cornerRadius(12)
                         .padding(.horizontal, 20)
+                        .padding(.top, 14)
 
                         if isInitialLoading {
                             ProgressView("Loading courses...")
@@ -134,6 +136,8 @@ struct CoursesView: View {
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(Color.clear)
                             }
+                            Spacer()
+                                .frame(height: 70)
                         }
                         else if !searchText.isEmpty && filteredCourses.isEmpty {
                             VStack(spacing: 20) {
@@ -297,19 +301,16 @@ struct CoursesView: View {
                 
             }
             
-            // 检查课程对象中的 classTimes
-            print("📋 课程对象中的 classTimes 数量: \(course.classTimes.count)")
             for (index, ct) in course.classTimes.enumerated() {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "HH:mm"
                 let startStr = formatter.string(from: ct.startTime)
                 let endStr = formatter.string(from: ct.endTime)
-                print("   \(index + 1). 星期\(ct.dayOfWeek) \(startStr)-\(endStr) @ \(ct.location)")
             }
         } else {
-            print("❌ 没有找到 classTimes 字段或格式错误")
-            print("   classTimes 数据: \(data["classTimes"] ?? "nil")")
-            print("   classTimes 类型: \(type(of: data["classTimes"]))")
+            print(" not found classTimes")
+            print("   classTimes data: \(data["classTimes"] ?? "nil")")
+            print("   classTimes category: \(type(of: data["classTimes"]))")
         }
         
         return course
@@ -403,9 +404,6 @@ struct CoursesView_Previews: PreviewProvider {
         CoursesView()
     }
 }
-
-
-import UIKit
 
 extension View {
     func hideKeyboard() {
