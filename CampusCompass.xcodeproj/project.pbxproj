@@ -13,13 +13,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		5C55C4DE2ECC60A500315D33 /* ELEC_3644_Final_Project.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ELEC_3644_Final_Project.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C55C4DE2ECC60A500315D33 /* CampusCompass.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CampusCompass.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		5C55C4E02ECC60A500315D33 /* ELEC_3644_Final_Project */ = {
+		5C55C4E02ECC60A500315D33 /* CampusCompass */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = ELEC_3644_Final_Project;
+			path = CampusCompass;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -41,7 +41,7 @@
 		5C55C4D52ECC60A500315D33 = {
 			isa = PBXGroup;
 			children = (
-				5C55C4E02ECC60A500315D33 /* ELEC_3644_Final_Project */,
+				5C55C4E02ECC60A500315D33 /* CampusCompass */,
 				5C55C4DF2ECC60A500315D33 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -49,7 +49,7 @@
 		5C55C4DF2ECC60A500315D33 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				5C55C4DE2ECC60A500315D33 /* ELEC_3644_Final_Project.app */,
+				5C55C4DE2ECC60A500315D33 /* CampusCompass.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -57,9 +57,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		5C55C4DD2ECC60A500315D33 /* ELEC_3644_Final_Project */ = {
+		5C55C4DD2ECC60A500315D33 /* CampusCompass */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 5C55C4E92ECC60A600315D33 /* Build configuration list for PBXNativeTarget "ELEC_3644_Final_Project" */;
+			buildConfigurationList = 5C55C4E92ECC60A600315D33 /* Build configuration list for PBXNativeTarget "CampusCompass" */;
 			buildPhases = (
 				5C55C4DA2ECC60A500315D33 /* Sources */,
 				5C55C4DB2ECC60A500315D33 /* Frameworks */,
@@ -70,16 +70,16 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				5C55C4E02ECC60A500315D33 /* ELEC_3644_Final_Project */,
+				5C55C4E02ECC60A500315D33 /* CampusCompass */,
 			);
-			name = ELEC_3644_Final_Project;
+			name = CampusCompass;
 			packageProductDependencies = (
 				5C0F71CB2ED04D5700E8D266 /* FirebaseAuth */,
 				5C0F71CD2ED04D5700E8D266 /* FirebaseFirestore */,
 				5C0F71CF2ED04D5700E8D266 /* FirebaseStorage */,
 			);
 			productName = ELEC_3644_Final_Project;
-			productReference = 5C55C4DE2ECC60A500315D33 /* ELEC_3644_Final_Project.app */;
+			productReference = 5C55C4DE2ECC60A500315D33 /* CampusCompass.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -97,7 +97,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 5C55C4D92ECC60A500315D33 /* Build configuration list for PBXProject "ELEC_3644_Final_Project" */;
+			buildConfigurationList = 5C55C4D92ECC60A500315D33 /* Build configuration list for PBXProject "CampusCompass" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -114,7 +114,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				5C55C4DD2ECC60A500315D33 /* ELEC_3644_Final_Project */,
+				5C55C4DD2ECC60A500315D33 /* CampusCompass */,
 			);
 		};
 /* End PBXProject section */
@@ -324,7 +324,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		5C55C4D92ECC60A500315D33 /* Build configuration list for PBXProject "ELEC_3644_Final_Project" */ = {
+		5C55C4D92ECC60A500315D33 /* Build configuration list for PBXProject "CampusCompass" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				5C55C4E72ECC60A600315D33 /* Debug */,
@@ -333,7 +333,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		5C55C4E92ECC60A600315D33 /* Build configuration list for PBXNativeTarget "ELEC_3644_Final_Project" */ = {
+		5C55C4E92ECC60A600315D33 /* Build configuration list for PBXNativeTarget "CampusCompass" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				5C55C4EA2ECC60A600315D33 /* Debug */,
